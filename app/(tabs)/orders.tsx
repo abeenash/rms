@@ -35,7 +35,7 @@ const RECENT_ORDERS = [
     dateDisplay: "Jul 8, 2026 · 2:15 PM",
     relativeTime: "1 hour ago",
     amount: "Rs. 622",
-    status: "cancelled",
+    status: "confirmed",
     itemsCount: 2,
   },
   {
@@ -175,7 +175,7 @@ export default function OrdersScreen() {
             ))
           ) : filteredOrders.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={{ color: colors.textMuted, fontWeight: "500" }}>No orders match this status fallback filter.</Text>
+              <Text style={{ color: colors.textMuted, fontWeight: "500" }}>No orders found in this filter you have selected.</Text>
             </View>
           ) : (
             filteredOrders.map((order) => {
@@ -226,7 +226,7 @@ export default function OrdersScreen() {
                           {order.relativeTime} ({order.dateDisplay.split("·")[1].trim()})
                         </Text>
                       </View>
-                      <Text style={[styles.amountText, { color: badgeText, fontWeight: "700" }]}>
+                      <Text style={[styles.amountText, { color: colors.textMain, fontWeight: "700" }]}>
                         {order.amount}
                       </Text>
                     </View>

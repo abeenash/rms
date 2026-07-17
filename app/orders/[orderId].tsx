@@ -1,11 +1,16 @@
 import { useLocalSearchParams, useRouter } from "expo-router"
 import {
-    ArrowLeft, Check, ChevronDown, ChevronUp,
-    FileText, Minus, Percent, Plus, Trash2, X
+    ArrowLeft,
+    Banknote,
+    ChefHat, ChevronDown, ChevronUp,
+    FileText, Minus, Percent, Plus,
+    QrCode,
+    X
 } from "lucide-react-native"
-import React, { useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import {
     Alert,
+    AppState,
     Image,
     KeyboardAvoidingView,
     Modal,
@@ -13,13 +18,18 @@ import {
     ScrollView,
     StyleSheet,
     TextInput,
+    ToastAndroid,
     TouchableOpacity,
-    View
+    View,
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Text } from "../components/AppText"
 import { useTheme } from "../context/ThemeContext"
+
+import * as Print from 'expo-print'
+
+import QRCode from 'react-native-qrcode-svg'
 
 const dummy_catalog = [
     { id: "m1", name: "Chicken roasted", price: 322, image: "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?w=200&q=80" },
@@ -70,6 +80,18 @@ export default function OrderDetailsScreen() {
     const [appliedPromo, setAppliedPromo] = useState<string | null>(null)
     const [promoDiscountVal, setPromoDiscountVal] = useState(0)
     const [manualDiscountStr, setManualDiscountStr] = useState("0")
+
+    //for the Qr code 
+    const [isQRModalVisible, setIsQRModalVisible] = useState(false)
+
+    //generate the qr code
+    const generateQRString = () => {
+        const merchantId = "LEKALI_SEKUWA_POS01"
+        const amount = itemsTotalSum || "1144"
+        const billId = orderId || "11A9CE22"
+
+        return `nepalqr://merchant?id=${merchantId}&amt=${amount}&ref=${billId}&currency=NPR&name=Lekali%20Sekuwa`
+    }
 
     //5. update the quantity in order items
     const updateQty = (id: string, currQty: number) => {
@@ -146,6 +168,368 @@ export default function OrderDetailsScreen() {
         item.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    //toast utility
+    const showToast = (message: string) => {
+        if (Platform.OS === 'android') {
+            ToastAndroid.showWithGravity(
+                message,
+                ToastAndroid.SHORT,
+                ToastAndroid.BOTTOM
+            )
+        } else {
+            Alert.alert("Success", message, [{ text: "OK" }], { cancelable: true })
+        }
+    }
+
+    //delay the response of the file save
+    const appBackgroundTimeRef = useRef<number>(0);
+    const pendingToastRef = useRef<string | null>(null);
+    const isPrintingRef = useRef<boolean>(false);
+
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', (nextAppState) => {
+            if (nextAppState === 'inactive' || nextAppState === 'background') {
+                // 1. Only record timestamp if we are actively printing
+                if (isPrintingRef.current) {
+                    appBackgroundTimeRef.current = Date.now();
+                }
+            } else if (nextAppState === 'active') {
+                // 2. Check if we returned from a print screen
+                if (isPrintingRef.current && pendingToastRef.current) {
+                    const message = pendingToastRef.current;
+
+                    // Calculate time spent outside the app (in milliseconds)
+                    const timeSpent = Date.now() - appBackgroundTimeRef.current;
+
+                    // Reset flags immediately to prevent double-firing
+                    isPrintingRef.current = false;
+                    pendingToastRef.current = null;
+
+                    // 3. HEURISTIC: If user returned in less than 2.5 seconds (2500ms),
+                    // they must have swiped back / cancelled immediately.
+                    if (timeSpent > 2500) {
+                        setTimeout(() => {
+                            showToast(message);
+                        }, 500);
+                    } else {
+                        console.log(`Print cancelled: returned too quickly (${timeSpent}ms)`);
+                    }
+                }
+            }
+        });
+
+        return () => {
+            subscription.remove();
+        };
+    }, []);
+
+
+    // the POS bill layout
+    const handlePOSPrint = async () => {
+        const currentDateTime = "Jul 14, 2026 | 14:44"; // Can be replaced dynamically with new Date()
+
+        // Thermal roll layout layout configuration wrapper
+        const htmlContent = `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <style>
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            color: #000000;
+            margin: 0;
+            padding: 10px;
+            font-size: 14px;
+            line-height: 1.4;
+          }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .bold { font-weight: bold; }
+          
+          .header-title { font-size: 22px; font-weight: bold; margin-bottom: 2px; letter-spacing: 1px; }
+          .subtitle { font-size: 12px; margin-bottom: 4px; }
+          .timestamp { font-size: 12px; margin-bottom: 15px; }
+          
+          .meta-section { margin-bottom: 10px; }
+          .meta-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+          
+          .divider-thick { border-bottom: 3px solid #000000; margin: 8px 0; }
+          .divider-dashed { border-bottom: 1px dashed #000000; margin: 10px 0; }
+          
+          .item-table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+          .item-table th { text-align: left; font-weight: bold; padding-bottom: 5px; }
+          .item-table td { padding: 6px 0; vertical-align: top; }
+          
+          .totals-section { margin-top: 10px; }
+          .total-row { display: flex; justify-content: space-between; padding: 4px 0; }
+          .grand-total { font-size: 18px; border-top: 2px solid #000000; border-bottom: 2px solid #000000; padding: 6px 0; margin-top: 4px; }
+          
+          .footer { margin-top: 25px; font-size: 13px; }
+        </style>
+      </head>
+      <body>
+        <div class="text-center">
+          <div class="header-title">LEKALI SEKUWA</div>
+          <div class="subtitle">★ TAX INVOICE / RECEIPT ★</div>
+          <div class="timestamp">${currentDateTime}</div>
+        </div>
+
+        <div class="meta-section">
+          <div class="meta-row"><span>Order #</span><span class="bold">ORD-${orderId || 'FB4903EC'}</span></div>
+          <div class="meta-row"><span>Table</span><span>3</span></div>
+          <div class="meta-row"><span>Customer</span><span>Guest</span></div>
+        </div>
+
+        <div class="divider-dashed"></div>
+
+        <table class="item-table">
+          <thead>
+            <tr>
+              <th style="width: 55%;">Item</th>
+              <th style="width: 15%; text-align: center;">Qty</th>
+              <th style="width: 30%; text-align: right;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orderItems.map(item => `
+              <tr>
+                <td>${item.name}</td>
+                <td class="text-center">${item.qty}</td>
+                <td class="text-right bold">Rs ${item.price * item.qty}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="divider-dashed"></div>
+
+        <div class="totals-section">
+          <div class="total-row">
+            <span>Subtotal</span>
+            <span class="bold">Rs ${itemsTotalSum}</span>
+          </div>
+          <div class="total-row grand-total">
+            <span class="bold">TOTAL</span>
+            <span class="bold">Rs ${itemsTotalSum}</span>
+          </div>
+        </div>
+
+        <div class="text-center footer">
+          <div class="bold">Thank you for dining with us!</div>
+          <div style="font-size: 11px; margin-top: 4px; color: #555;">Lekali Sekuwa</div>
+        </div>
+      </body>
+    </html>
+  `;
+        try {
+            await Print.printAsync({ html: htmlContent });
+        } catch (error) {
+            console.error("Failed to open native print framework:", error);
+        }
+    };
+
+    const handleInvoicePrint = async () => {
+        const currentDateTime = "Jul 14, 2026 | 14:44";
+
+        const htmlContent = `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          body {
+            font-family: 'Times New Roman', Times, serif;
+            color: #0F172A;
+            margin: 0;
+            padding: 40px;
+            font-size: 14px;
+            line-height: 1.6;
+          }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .bold { font-weight: bold; }
+          
+          .header-title { font-size: 28px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; }
+          .subtitle { font-size: 12px; margin-top: 6px; letter-spacing: 3px; color: #475569; }
+          .timestamp { font-size: 13px; margin-top: 4px; color: #64748B; }
+          
+          .divider-thick { border-bottom: 2px solid #0F172A; margin: 20px 0; }
+          
+          .meta-table { width: 100%; margin-bottom: 25px; font-size: 13px; }
+          .meta-table td { padding: 3px 0; }
+          
+          .item-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          .item-table th { 
+            text-transform: uppercase; 
+            font-size: 12px; 
+            letter-spacing: 1.5px; 
+            border-bottom: 2px solid #0F172A; 
+            padding-bottom: 8px; 
+            text-align: left;
+          }
+          .item-table td { padding: 12px 0; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
+          
+          .totals-wrapper { margin-top: 20px; display: flex; flex-direction: column; align-items: flex-end; }
+          .total-row { display: flex; width: 40%; justify-content: space-between; padding: 6px 0; }
+          .grand-total { border-top: 2px solid #0F172A; border-bottom: 2px solid #0F172A; margin-top: 6px; padding: 10px 0; }
+          
+          .footer { margin-top: 50px; }
+          .footer-title { font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+          .footer-sub { font-size: 11px; color: #64748B; margin-top: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="text-center">
+          <div class="header-title">LEKALI SEKUWA</div>
+          <div class="subtitle">INVOICE / RECEIPT</div>
+          <div class="timestamp">${currentDateTime}</div>
+        </div>
+
+        <div class="divider-thick"></div>
+
+        <table class="meta-table">
+          <tr>
+            <td>Order #</td>
+            <td class="text-right bold">ORD-${orderId || 'FB4903EC'}</td>
+          </tr>
+          <tr>
+            <td>Table</td>
+            <td class="text-right">3</td>
+          </tr>
+          <tr>
+            <td>Customer</td>
+            <td class="text-right">Guest</td>
+          </tr>
+        </table>
+
+        <table class="item-table">
+          <thead>
+            <tr>
+              <th style="width: 50%;">Item</th>
+              <th style="width: 15%; text-align: center;">Qty</th>
+              <th style="width: 15%; text-align: right;">Rate</th>
+              <th style="width: 20%; text-align: right;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orderItems.map(item => `
+              <tr>
+                <td>${item.name}</td>
+                <td class="text-center">${item.qty}</td>
+                <td class="text-right">Rs ${item.price}</td>
+                <td class="text-right bold">Rs ${item.price * item.qty}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="totals-wrapper">
+          <div class="total-row">
+            <span>Subtotal</span>
+            <span>Rs ${itemsTotalSum}</span>
+          </div>
+          <div class="total-row grand-total">
+            <span class="bold">Total</span>
+            <span class="bold">Rs ${itemsTotalSum}</span>
+          </div>
+        </div>
+
+        <div class="text-center footer">
+          <div class="footer-title">Thank you for your order!</div>
+          <div class="footer-sub">Lekali Sekuwa</div>
+        </div>
+      </body>
+    </html>
+  `;
+
+        try {
+            await Print.printAsync({ html: htmlContent });
+        } catch (error) {
+            console.error("Print layout generation failed:", error);
+        }
+    };
+
+    const handleKOTPrint = async () => {
+        const currentDateTime = "Jul 14, 2026 | 14:44";
+
+        const htmlContent = `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            color: #000000;
+            margin: 0;
+            padding: 10px;
+            font-size: 15px;
+          }
+          .text-center { text-align: center; }
+          .bold { font-weight: bold; }
+          
+          .header-title { font-size: 20px; font-weight: bold; text-transform: uppercase; }
+          .subtitle { font-size: 13px; margin: 4px 0 10px 0; }
+          
+          .divider-dashed { border-bottom: 1.5px dashed #000000; margin: 8px 0; }
+          .divider-double { border-bottom: 3px double #000000; margin: 12px 0; }
+          
+          .meta-section { margin-bottom: 12px; }
+          .meta-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+          
+          .item-table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+          .item-table th { text-align: left; font-weight: bold; border-bottom: 1px dashed #000000; padding-bottom: 6px; }
+          .item-table td { padding: 8px 0; font-size: 16px; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="text-center">
+          <div class="header-title">LEKALI SEKUWA</div>
+          <div class="subtitle">KITCHEN ORDER TICKET</div>
+        </div>
+
+        <div class="divider-dashed"></div>
+
+        <div class="meta-section">
+          <div class="meta-row"><span>Date/Time</span><span>${currentDateTime}</span></div>
+          <div class="meta-row"><span>Order #</span><span class="bold">ORD-${orderId || 'FB4903EC'}</span></div>
+          <div class="meta-row"><span>Table</span><span class="bold">3</span></div>
+        </div>
+
+        <div class="divider-dashed"></div>
+
+        <table class="item-table">
+          <thead>
+            <tr>
+              <th style="width: 80%;">Item</th>
+              <th style="width: 20%; text-align: right;">Qty</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orderItems.map(item => `
+              <tr>
+                <td>${item.name}</td>
+                <td style="text-align: right;">${item.qty}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="divider-double"></div>
+
+        <div class="text-center bold" style="letter-spacing: 2px; margin-top: 15px;">
+          ** KOT **
+        </div>
+      </body>
+    </html>
+  `;
+
+        try {
+            await Print.printAsync({ html: htmlContent });
+            showToast("KOT order ticket dispatched to kitchen!");
+        } catch (error) {
+            console.error("KOT layout generation failed:", error);
+        }
+    };
+
     return (
         <KeyboardAvoidingView
             style={{ flex: 1, backgroundColor: colors.bg }}
@@ -213,7 +597,6 @@ export default function OrderDetailsScreen() {
                             ]}>
                                 {paymentStatus}
                             </Text>
-                            <ChevronDown size={12} color={paymentStatus === "PAID" ? colors.accentGreen : colors.accentYellow} style={{ marginLeft: 4 }} />
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -254,7 +637,7 @@ export default function OrderDetailsScreen() {
                                     onPress={() => removeItem(item.id, item.name)}
                                     style={[styles.trashActionNode, { backgroundColor: colors.accentRedBg }]}
                                 >
-                                    <Trash2 size={16} color={colors.accentRed} />
+                                    <X size={16} color={colors.accentRed} />
                                 </TouchableOpacity>
 
                                 {/* subtotal A */}
@@ -436,28 +819,88 @@ export default function OrderDetailsScreen() {
                 </View>
             </ScrollView>
 
-            {/* two fixed buttons: pay now and view invoice/ receipt */}
-            <View style={[styles.bottomControlButtonsPanel, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: colors.cardBg, borderTopColor: colors.border }]}>
-                <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => {
-                        setPaymentStatus("PAID");
-                        Alert.alert("Payment Cleared", `Transaction of NPR ${grandFinalTotal} completed!`);
-                    }}
-                    style={[styles.primaryCheckoutActionBtn, { backgroundColor: colors.accentGreen }]}
-                >
-                    <Check size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.checkoutActionBtnLabelText}>Pay Now</Text>
-                </TouchableOpacity>
+            {/* UNIFIED CONTROLS: Two-Row Sticky Bottom Action Matrix */}
+            <View style={[
+                styles.bottomControlButtonsPanel,
+                {
+                    paddingBottom: Math.max(insets.bottom, 12),
+                    backgroundColor: colors.cardBg,
+                    borderTopColor: colors.border,
+                    paddingHorizontal: 16,
+                    paddingTop: 12
+                }
+            ]}>
 
+                {/* ROW 1: Side-by-Side Settlement Methods */}
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 4 }}>
+
+                    {/* 1. CASH PAYMENT TRIGGER */}
+                    <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => {
+                            setPaymentStatus("PAID");
+                            showToast("Order settled via Cash payment!");
+                        }}
+                        style={{
+                            flex: 1,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: "#F1F5F9",
+                            borderWidth: 1,
+                            borderColor: "#CBD5E1",
+                            borderRadius: 12,
+                            paddingVertical: 14,
+                        }}
+                    >
+                        <Banknote size={18} color="#475569" style={{ marginRight: 6 }} />
+                        <Text style={{ color: "#475569", fontWeight: "700", fontSize: 16 }}>Cash</Text>
+                    </TouchableOpacity>
+
+                    {/* 2. DYNAMIC QR CODE TRIGGER */}
+                    <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => setIsQRModalVisible(true)}
+                        style={{
+                            flex: 1,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: "#16A34A",
+                            borderRadius: 12,
+                            paddingVertical: 14,
+                        }}
+                    >
+                        <QrCode size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                        <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 16 }}>QR Code</Text>
+                    </TouchableOpacity>
+
+                </View>
+
+                {/* ROW 2: Full-Width Document Accessor */}
                 <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={() => setIsInvoiceVisible(true)}
-                    style={[styles.secondaryReceiptActionBtn, { borderColor: colors.border }]}
+                    style={[
+                        styles.secondaryReceiptActionBtn,
+                        {
+                            width: '100%',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderColor: colors.border,
+                            backgroundColor: colors.primary,
+                            borderRadius: 12,
+                            paddingVertical: 14,
+                        }
+                    ]}
                 >
-                    <FileText size={18} color={colors.textMain} style={{ marginRight: 6 }} />
-                    <Text style={[styles.receiptActionBtnLabelText, { color: colors.textMain }]}>View Invoice / Receipt</Text>
+                    <FileText size={18} color="#FFF" style={{ marginRight: 6 }} />
+                    <Text style={[styles.receiptActionBtnLabelText, { color: "#FFF", fontWeight: "700", fontSize: 16 }]}>
+                        View Invoice / Receipt
+                    </Text>
                 </TouchableOpacity>
+
             </View>
 
             {/* for invoice/ receipt generation, overlaying the react-native modal  */}
@@ -531,16 +974,59 @@ export default function OrderDetailsScreen() {
 
                         {/* action buttons for print in POS, normally, and Kitchen Order Table. And Close dialog */}
                         <View style={styles.invoiceModalActionsRow}>
-                            <TouchableOpacity style={[styles.invoiceActionBtn, { backgroundColor: "#1E293B", flex: 1.2 }]}>
+                            <TouchableOpacity
+                                onPress={async () => {
+                                    try {
+                                        isPrintingRef.current = true
+                                        pendingToastRef.current = "POS bill saved successfully!"
+
+                                        await handlePOSPrint()
+                                    } catch (error) {
+                                        isPrintingRef.current = false
+                                        pendingToastRef.current = null
+                                        console.log("POS print failed to initialize:", error)
+                                    }
+                                }}
+                                activeOpacity={0.8}
+                                style={[styles.invoiceActionBtn, { backgroundColor: "#1E293B", flex: 1.2 }]}>
                                 <FileText size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
                                 <Text style={[styles.invoiceActionBtnLabel, { color: "#FFFFFF" }]}>POS</Text>
                             </TouchableOpacity>
 
-                            <TouchableOpacity style={[styles.invoiceActionBtn, { borderColor: "#CBD5E1", borderWidth: 1, flex: 1.2 }]}>
+                            <TouchableOpacity
+                                onPress={async () => {
+                                    try {
+                                        isPrintingRef.current = true
+                                        pendingToastRef.current = "Invoice bill saved successfully!"
+
+                                        await handleInvoicePrint()
+                                    } catch (error) {
+                                        isPrintingRef.current = false
+                                        pendingToastRef.current = null
+                                        console.log("Invoice bill failed to initialize:", error)
+                                    }
+                                }}
+                                activeOpacity={0.8}
+                                style={[styles.invoiceActionBtn, { borderColor: "#CBD5E1", borderWidth: 1, flex: 1.2 }]}>
                                 <Text style={[styles.invoiceActionBtnLabel, { color: "#0F172A" }]}>Print</Text>
                             </TouchableOpacity>
 
-                            <TouchableOpacity style={[styles.invoiceActionBtn, { borderColor: "#FFEDD5", backgroundColor: "#FFF7ED", borderWidth: 1, flex: 1.2 }]}>
+                            <TouchableOpacity
+                                onPress={async () => {
+                                    try {
+                                        isPrintingRef.current = true
+                                        pendingToastRef.current = "KOT bill saved successfully!"
+
+                                        await handleKOTPrint()
+                                    } catch (error) {
+                                        isPrintingRef.current = false
+                                        pendingToastRef.current = null
+                                        console.log("KOT bill failed to initialize:", error)
+                                    }
+                                }}
+                                activeOpacity={0.8}
+                                style={[styles.invoiceActionBtn, { borderColor: "#FFEDD5", backgroundColor: "#FFF7ED", borderWidth: 1, flex: 1.2 }]}>
+                                <ChefHat size={14} color="#EA580C" style={{ marginRight: 4 }} />
                                 <Text style={[styles.invoiceActionBtnLabel, { color: "#EA580C" }]}>KOT</Text>
                             </TouchableOpacity>
 
@@ -550,6 +1036,97 @@ export default function OrderDetailsScreen() {
                             </TouchableOpacity>
                         </View>
 
+                    </View>
+                </View>
+            </Modal>
+
+            {/* DYNAMIC INTERACTIVE MERCHANT QR MODAL OVERLAY */}
+            <Modal
+                visible={isQRModalVisible}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setIsQRModalVisible(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+                    <View style={{
+                        backgroundColor: '#FFFFFF',
+                        borderTopLeftRadius: 24,
+                        borderTopRightRadius: 24,
+                        padding: 24,
+                        alignItems: 'center'
+                    }}>
+                        {/* Top Drag Indicator Line */}
+                        <View style={{ width: 40, height: 4, backgroundColor: '#CBD5E1', borderRadius: 2, marginBottom: 20 }} />
+
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 2 }}>
+                            Scan to Pay
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 20 }}>
+                            Lekali Sekuwa Terminal 01
+                        </Text>
+
+                        {/* The Visual Dynamic QR Matrix Block */}
+                        <View style={{
+                            padding: 16,
+                            backgroundColor: '#F8FAFC',
+                            borderRadius: 16,
+                            borderWidth: 1,
+                            borderColor: '#E2E8F0',
+                            marginBottom: 20
+                        }}>
+                            <QRCode
+                                value={generateQRString()}
+                                size={200}
+                                backgroundColor='#F8FAFC'
+                                color='#000000'
+                            />
+                        </View>
+
+                        {/* Dynamic Financial Details Block */}
+                        <View style={{ width: '100%', backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, marginBottom: 24 }}>
+                            <View style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                                <Text style={{ color: '#64748B', fontSize: 14 }}>Order ID</Text>
+                                <Text style={{ color: '#0F172A', fontWeight: '600', fontSize: 14 }}>#{orderId || "11A9CE22"}</Text>
+                            </View>
+                            <View style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Text style={{ color: '#64748B', fontSize: 14 }}>Amount Due</Text>
+                                <Text style={{ color: '#16A34A', fontWeight: '700', fontSize: 16 }}>NPR {itemsTotalSum || "1,144.00"}</Text>
+                            </View>
+                        </View>
+
+                        {/* Completion Buttons */}
+                        <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+                            <TouchableOpacity
+                                onPress={() => setIsQRModalVisible(false)}
+                                style={{
+                                    flex: 1,
+                                    paddingVertical: 14,
+                                    borderRadius: 12,
+                                    borderWidth: 1,
+                                    borderColor: '#CBD5E1',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <Text style={{ color: '#475569', fontWeight: '600' }}>Cancel</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                onPress={() => {
+                                    setIsQRModalVisible(false);
+                                    showToast("Payment confirmed via Digital Wallet!");
+                                    // Place code here to toggle your context payment status state to "PAID"
+                                }}
+                                style={{
+                                    flex: 1,
+                                    paddingVertical: 14,
+                                    borderRadius: 12,
+                                    backgroundColor: '#16A34A',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Confirm Paid</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -853,7 +1430,7 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
     },
     secondaryReceiptActionBtn: {
-        height: 44,
+        height: 48,
         borderRadius: 10,
         borderWidth: 1,
         flexDirection: "row",

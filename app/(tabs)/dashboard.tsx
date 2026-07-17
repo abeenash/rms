@@ -1,7 +1,8 @@
 import { useRouter } from "expo-router"
-import { Search, Store, User, Users } from "lucide-react-native"
+import { LogOutIcon, Search, Store, User, Users } from "lucide-react-native"
 import React, { useEffect, useState } from "react"
 import {
+  Alert,
   Dimensions,
   ScrollView,
   StyleSheet,
@@ -83,9 +84,30 @@ export default function DashboardScreen() {
   }
 
   const handleTablePress = (table: typeof INITIAL_TABLES[0]) => {
-    if (table.status === "available") {
-      router.push(`/tables/${table.id}`)
-    }
+    router.push({
+      pathname: "/tables/[tableId]",
+      params: {
+        tableId: table.id,
+        status: table.status === "occupied" ? "Occupied" : "Available"
+      }
+    })
+  }
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to log out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log Out",
+          style: "destructive",
+          onPress: () => {
+            router.replace("/")
+          }
+        }
+      ]
+    )
   }
 
   return (
@@ -94,18 +116,26 @@ export default function DashboardScreen() {
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      
+
       <View style={[styles.profileHeader, { backgroundColor: isDark ? "#1E293B" : "#6366F1" }]}>
         <View style={styles.profileRow}>
-          <View style={[styles.avatarBox, { backgroundColor: "rgba(255,255,255,0.1)" }]}>
-            <User size={20} color="#FFFFFF" />
+          <View style={styles.profileLeft}>
+            <View style={[styles.avatarBox, { backgroundColor: "rgba(255,255,255,0.1)" }]}>
+              <User size={20} color="#FFFFFF" />
+            </View>
+            <View style={styles.staffInfo}>
+              <Text style={[styles.staffLabel, { color: "#FFFFFF" }]}>Staff member</Text>
+              <Text style={[styles.staffName, { color: "#FFFFFF", fontWeight: "700" }]}>Mohan Rai</Text>
+            </View>
           </View>
-          <View>
-            <Text style={[styles.staffLabel, { color: "#FFFFFF" }]}>Staff member</Text>
-            <Text style={[styles.staffName, { color: "#FFFFFF", fontWeight: "700" }]}>Mohan Rai</Text>
-          </View>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handleLogout}
+            style={[styles.logoutButton, { backgroundColor: isDark ? "#6366F1" : "#5355F1" }]}>
+            <LogOutIcon size={20} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
-        <View style={styles.storeRow}>
+        <View style={[styles.storeRow, { borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.2)" }]}>
           <Store size={14} color="#FFFFFF" />
           <Text style={[styles.storeText, { color: "#FFFFFF", fontWeight: "500" }]}>lekali-sekuwa branch</Text>
         </View>
@@ -151,51 +181,51 @@ export default function DashboardScreen() {
         <View style={styles.grid}>
           {isLoading
             ? Array.from({ length: 4 }).map((_, index) => (
-                <View key={`skeleton-${index}`} style={[styles.card, { backgroundColor: colors.cardDefault, borderColor: "transparent" }]}>
-                  <Animated.View style={[styles.skeletonSquare, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
-                  <Animated.View style={[styles.skeletonBadge, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
-                  <Animated.View style={[styles.skeletonTextLine, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
-                </View>
-              ))
+              <View key={`skeleton-${index}`} style={[styles.card, { backgroundColor: colors.cardDefault, borderColor: "transparent" }]}>
+                <Animated.View style={[styles.skeletonSquare, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
+                <Animated.View style={[styles.skeletonBadge, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
+                <Animated.View style={[styles.skeletonTextLine, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
+              </View>
+            ))
             : filteredTables.map((table) => {
-                const isAvailable = table.status === "available"
+              const isAvailable = table.status === "available"
 
-                const cardBg = isAvailable ? colors.cardAvailableBg : colors.cardOccupiedBg
-                const cardBorder = isAvailable ? colors.cardAvailableBorder : colors.cardOccupiedBorder
-                const accentColor = isAvailable ? colors.availableAccent : colors.occupiedAccent
+              const cardBg = isAvailable ? colors.cardAvailableBg : colors.cardOccupiedBg
+              const cardBorder = isAvailable ? colors.cardAvailableBorder : colors.cardOccupiedBorder
+              const accentColor = isAvailable ? colors.availableAccent : colors.occupiedAccent
 
-                return (
-                  <TouchableOpacity
-                    key={table.id}
-                    activeOpacity={0.7}
-                    onPress={() => handleTablePress(table)}
-                    style={[
-                      styles.card,
-                      {
-                        backgroundColor: cardBg,
-                        borderColor: cardBorder,
-                      }
-                    ]}
-                  >
-                    <View style={[styles.numberBlock, { backgroundColor: accentColor }]}>
-                      <Text style={[styles.numberText, { fontWeight: "bold" }]}>{table.number}</Text>
-                    </View>
+              return (
+                <TouchableOpacity
+                  key={table.id}
+                  activeOpacity={0.7}
+                  onPress={() => handleTablePress(table)}
+                  style={[
+                    styles.card,
+                    {
+                      backgroundColor: cardBg,
+                      borderColor: cardBorder,
+                    }
+                  ]}
+                >
+                  <View style={[styles.numberBlock, { backgroundColor: accentColor }]}>
+                    <Text style={[styles.numberText, { fontWeight: "bold" }]}>{table.number}</Text>
+                  </View>
 
-                    <View style={[styles.badge, { backgroundColor: accentColor }]}>
-                      <Text style={[styles.badgeText, { fontWeight: "700" }]}>
-                        {table.status}
-                      </Text>
-                    </View>
+                  <View style={[styles.badge, { backgroundColor: accentColor }]}>
+                    <Text style={[styles.badgeText, { fontWeight: "700" }]}>
+                      {table.status}
+                    </Text>
+                  </View>
 
-                    <View style={styles.capacityContainer}>
-                      <Users size={13} color={colors.textMuted} style={styles.capacityIcon} />
-                      <Text style={[styles.capacityText, { color: colors.textMuted, fontWeight: "600" }]}>
-                        Capacity: {table.capacity}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                )
-              })}
+                  <View style={styles.capacityContainer}>
+                    <Users size={13} color={colors.textMuted} style={styles.capacityIcon} />
+                    <Text style={[styles.capacityText, { color: colors.textMuted, fontWeight: "600" }]}>
+                      Capacity: {table.capacity}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )
+            })}
         </View>
       </View>
     </ScrollView>
@@ -228,6 +258,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
+  profileLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   avatarBox: {
     width: 42,
     height: 42,
@@ -244,6 +279,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     letterSpacing: -0.2,
   },
+  staffInfo: {
+    justifyContent: "center",
+  },
   storeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -251,6 +289,15 @@ const styles = StyleSheet.create({
   },
   storeText: {
     fontSize: 13,
+  },
+  logoutButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: "center",
+    alignItems: "center",
+    left: 120,
+    top: 12,
   },
   title: {
     fontSize: 22,

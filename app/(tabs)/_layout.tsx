@@ -3,14 +3,15 @@ import {
   ParamListBase,
   TabNavigationState
 } from "@react-navigation/native"
-import { withLayoutContext } from "expo-router"
+import { useRouter, withLayoutContext } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import {
   ClipboardList,
   LayoutDashboard,
-  Percent
+  Percent,
+  Plus
 } from "lucide-react-native"
-import { View } from "react-native"
+import { TouchableOpacity, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { useTheme } from "../context/ThemeContext"
@@ -27,6 +28,7 @@ export const MaterialTopTabs = withLayoutContext<
 export default function TopTabsLayout() {
   const insets = useSafeAreaInsets()
   const { isDark } = useTheme()
+  const router = useRouter()
 
   const colors = {
     bg: isDark ? "#0F172A" : "#F8FAFC",
@@ -104,6 +106,37 @@ export default function TopTabsLayout() {
           }}
         />
       </MaterialTopTabs>
+
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => {
+          // We route to our menu, but pass 'direct' instead of a numeric table ID
+          
+          router.push({
+            pathname: "/tables/[tableId]",
+            params: { tableId: "direct", isDirectOrder: 'true' }
+          });
+        }}
+        style={{
+          position: 'absolute',
+          bottom: 50,
+          right: 24,
+          width: 60,
+          height: 60,
+          borderRadius: 30,
+          backgroundColor: '#6366F1',
+          alignItems: 'center',
+          justifyContent: 'center',
+          elevation: 6,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.27,
+          shadowRadius: 4.65,
+          zIndex: 999,
+        }}
+      >
+        <Plus size={28} color="#FFFFFF" />
+      </TouchableOpacity>
     </View>
   );
 }
