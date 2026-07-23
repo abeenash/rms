@@ -5,7 +5,7 @@ import { useTheme } from "../context/ThemeContext"
 
 import { Calendar, Tag } from "lucide-react-native"
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated"
-import { Text } from "../components/AppText"
+import Text from "../components/AppText"
 
 //mock data
 const DUMMY_PROMOS = [

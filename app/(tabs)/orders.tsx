@@ -1,5 +1,5 @@
 import { Clock, ShoppingBag } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   RefreshControl,
   ScrollView,
@@ -16,75 +16,65 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useRouter } from "expo-router";
-import { Text } from "../components/AppText";
+import Text from "../components/AppText";
 import { useTheme } from "../context/ThemeContext";
 
-const RECENT_ORDERS = [
-  {
-    id: "ORD-8D015000",
-    customer: "Mohan Rai",
-    dateDisplay: "Jul 8, 2026 · 3:30 PM",
-    relativeTime: "12 mins ago",
-    amount: "Rs. 822",
-    status: "delivered",
-    itemsCount: 4,
-  },
-  {
-    id: "ORD-66BF70A3",
-    customer: "Mohan Rai",
-    dateDisplay: "Jul 8, 2026 · 2:15 PM",
-    relativeTime: "1 hour ago",
-    amount: "Rs. 622",
-    status: "confirmed",
-    itemsCount: 2,
-  },
-  {
-    id: "ORD-52F83A8D",
-    customer: "Mohan Rai",
-    dateDisplay: "Jul 7, 2026 · 8:45 PM",
-    relativeTime: "Yesterday",
-    amount: "Rs. 1,250",
-    status: "delivered",
-    itemsCount: 5,
-  },
-  {
-    id: "ORD-11A9CE22",
-    customer: "Mohan Rai",
-    dateDisplay: "Jul 7, 2026 · 1:10 PM",
-    relativeTime: "Yesterday",
-    amount: "Rs. 450",
-    status: "confirmed",
-    itemsCount: 1,
-  },
-];
+import { Order, fetchOrdersApi } from "@/services/orderService";
+import { useAuth } from "../context/AuthContext";
 
 export default function OrdersScreen() {
-  const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const { isDark } = useTheme();
+
+  const router = useRouter()
+  const { tenantSlug } = useAuth();
+  const pulseOpacity = useSharedValue(0.4);
+
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [activeFilter, setActiveFilter] = useState<"all" | "confirmed" | "delivered" | "cancelled">("all");
 
-  const pulseOpacity = useSharedValue(0.4);
-  const router = useRouter()
+  const formatOrderTime = (isoString?: string) => {
+    if (!isoString) return { dateDisplay: "N/A", timeStr: "" };
+    const date = new Date(isoString);
 
-  const startLoadingSequence = () => {
-    setIsLoading(true);
-    pulseOpacity.value = withRepeat(withTiming(1, { duration: 800 }), -1, true);
+    if (isNaN(date.getTime())) return { dateDisplay: "N/A", timestr: "" }
 
-    setTimeout(() => {
-      setIsLoading(false);
-      setRefreshing(false);
-    }, 1200);
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    return {
+      dateDisplay: `${dateStr} | ${timeStr}`,
+      timeStr
+    };
   };
 
+  const loadOrders = useCallback(async (showLoader = true) => {
+    if (!tenantSlug) return
+
+    try {
+      if (showLoader) {
+        setIsLoading(true)
+        pulseOpacity.value = withRepeat(withTiming(1, { duration: 800 }), -1, true);
+      }
+
+      const fetchedOrders = await fetchOrdersApi(tenantSlug);
+      setOrders(fetchedOrders)
+    } catch (error) {
+      console.error("Failed to load orders:", error);
+    } finally {
+      setIsLoading(false)
+      setRefreshing(false);
+    }
+  }, [tenantSlug])
+
   useEffect(() => {
-    startLoadingSequence();
+    loadOrders(true);
   }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
-    startLoadingSequence();
+    loadOrders(false);
   };
 
   const animatedPulseStyle = useAnimatedStyle(() => ({
@@ -108,9 +98,11 @@ export default function OrdersScreen() {
     cancelledBg: isDark ? "#2A1414" : "#FEF2F2",
   };
 
-  const filteredOrders = RECENT_ORDERS.filter(order =>
-    activeFilter === "all" ? true : order.status === activeFilter
-  );
+  const filteredOrders = orders.filter(order => {
+    const statusLower = order.status?.toLowerCase();
+    if (activeFilter === "all") return true
+    return statusLower === activeFilter
+  });
 
   return (
     <ScrollView
@@ -179,14 +171,19 @@ export default function OrdersScreen() {
             </View>
           ) : (
             filteredOrders.map((order) => {
-              const badgeBg = colors[`${order.status}Bg` as keyof typeof colors];
-              const badgeText = colors[order.status as keyof typeof colors];
+              const statusLower = (order.status || "pending").toLowerCase()
+              const badgeBg = colors[`${statusLower}Bg` as keyof typeof colors] || colors.confirmedBg;  //make your pendingBg and down pending also
+              const badgeText = colors[statusLower as keyof typeof colors] || colors.confirmed;
+
+              const { dateDisplay } = formatOrderTime(order.orderedAt)
+
+              const itemsCount = (order.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0);
 
               return (
                 <TouchableOpacity
                   key={order.id}
                   activeOpacity={0.8}
-                  onPress={()=>router.push(`/orders/${order.id}`)}>
+                  onPress={() => router.push(`/orders/${order.id}`)}>
                   <View
                     style={[
                       styles.orderCard,
@@ -199,7 +196,7 @@ export default function OrdersScreen() {
 
                     <View style={styles.cardHeader}>
                       <Text style={[styles.orderIdText, { color: colors.textMain, fontWeight: "700" }]}>
-                        #{order.id}
+                        #{order.orderNumber}
                       </Text>
                       <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
                         <Text style={[styles.statusBadgeText, { color: badgeText, fontWeight: "700" }]}>
@@ -210,12 +207,22 @@ export default function OrdersScreen() {
 
                     <View style={styles.customerRow}>
                       <Text style={[styles.customerText, { color: colors.textMain, fontWeight: "600" }]}>
-                        {order.customer}
+                        {order.customerName || "Walk-in Customer"}
                       </Text>
+                      {order.tableNumber ? (
+                        <>
+                          <View style={styles.dotDivider} />
+                          <View style={[styles.existedTable, { backgroundColor: "#6366F1", borderColor: "#6366F1" }]}>
+                            <Text style={[styles.itemsText, { color: "#FFF", fontWeight: "500" }]}>
+                              T{order.tableNumber}
+                            </Text>
+                          </View>
+                        </>
+                      ) : null}
                       <View style={styles.dotDivider} />
                       <ShoppingBag size={13} color={colors.textMuted} />
                       <Text style={[styles.itemsText, { color: colors.textMuted, fontWeight: "500" }]}>
-                        {order.itemsCount} {order.itemsCount === 1 ? "item" : "items"}
+                        {itemsCount} {itemsCount === 1 ? "item" : "items"}
                       </Text>
                     </View>
 
@@ -223,11 +230,11 @@ export default function OrdersScreen() {
                       <View style={styles.timeContainer}>
                         <Clock size={13} color={colors.textMuted} />
                         <Text style={[styles.timeText, { color: colors.textMuted, fontWeight: "500" }]}>
-                          {order.relativeTime} ({order.dateDisplay.split("·")[1].trim()})
+                          {dateDisplay}
                         </Text>
                       </View>
                       <Text style={[styles.amountText, { color: colors.textMain, fontWeight: "700" }]}>
-                        {order.amount}
+                        Rs. {order.totalAmount}
                       </Text>
                     </View>
                   </View>
@@ -345,4 +352,10 @@ const styles = StyleSheet.create({
   skBlock: {
     borderRadius: 4,
   },
+  existedTable: {
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+    borderWidth: 1,
+  }
 });

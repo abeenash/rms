@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,7 +11,7 @@ import {
   View,
 } from "react-native";
 
-import { Text } from "./components/AppText";
+import Text from "./components/AppText";
 
 import { useRouter } from "expo-router";
 import { Eye, EyeOff, LogIn, Moon, Sun } from "lucide-react-native";
@@ -21,6 +22,7 @@ import Animated, {
   withDelay,
   withTiming
 } from "react-native-reanimated";
+import { useAuth } from "./context/AuthContext";
 import { useTheme } from "./context/ThemeContext";
 
 const LoginScreen = () => {
@@ -31,15 +33,27 @@ const LoginScreen = () => {
   const [isPasswordFocused, setIsPasswordFocused] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
+  const { login } = useAuth()
   const router = useRouter()
 
   const handleLogin = async () => {
-    if (isLoading) return;
-    setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    setIsLoading(false);
-    router.replace("/dashboard");
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      Alert.alert("ERROR!", "Please fill in your email and password.")
+      return;
+    }
+    try {
+      setIsLoading(true);
+      await login({ email: trimmedEmail, password });
+      router.replace("/dashboard");
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.message || "Invalid Details";
+      Alert.alert("LOGIN FAILED!", errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
+
 
   const { isDark, toggleTheme } = useTheme();
 

@@ -11,6 +11,7 @@ import {
 } from "lucide-react-native"
 import React, { useEffect, useState } from "react"
 import {
+    ActivityIndicator,
     Alert,
     Dimensions,
     Image,
@@ -24,47 +25,14 @@ import {
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-import { Text } from "../components/AppText"
+import Text from "../components/AppText"
 import { useTheme } from "../context/ThemeContext"
+
+import { fetchMenuItemsApi, fetchMenusApi } from "@/services/menuService"
+import { useAuth } from "../context/AuthContext"
 
 const { width } = Dimensions.get("window")
 const CARD_WIDTH = (width - 44) / 2
-
-const MENU_ITEMS = [
-    {
-        id: "m1",
-        name: "Chicken Roast",
-        price: 440,
-        category: "Lekali Menu One",
-        description: "Best and testy roasted chicken",
-        image: "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?w=500&q=80",
-    },
-    {
-        id: "m2",
-        name: "Lekali Menu 1",
-        price: 300,
-        category: "Lekali Menu One",
-        description: "Lekali special set combo",
-        image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500&q=80",
-    },
-    {
-        id: "m3",
-        name: "Lekali Momo",
-        price: 200,
-        category: "Momo",
-        description: "Best and testy steamed momos",
-        image: "https://images.unsplash.com/photo-1625220194771-7ebedd0870b6?w=500&q=80",
-    },
-    {
-        id: "m4",
-        name: "Lekali Sekuwa",
-        price: 200,
-        category: "Sekuwa",
-        description: "Charcoal grilled authentic sekuwa",
-        image: "https://images.unsplash.com/photo-1544025162-d76694265947?w=500&q=80",
-    },
-]
-
 interface CartState {
     [key: string]: number
 }
@@ -76,18 +44,39 @@ interface ExistingItem {
     quantity: number
 }
 
+export interface UIItem {
+    id: string;
+    name: string;
+    description: string;
+    price: number;
+    category: string;
+    image: string;
+}
+
 export default function TableOrderingScreen() {
-    const { tableId, isDirectOrder, status } = useLocalSearchParams<{
+    const { tableId, tableNumber, capacity, isDirectOrder, status } = useLocalSearchParams<{
         tableId: string
+        tableNumber?: string
+        capacity?: string
         isDirectOrder: string
         status?: string
     }>()
+
+    const displayTableNumber = tableNumber || tableId
+
     const router = useRouter()
     const insets = useSafeAreaInsets()
     const { isDark } = useTheme()
+    const { tenantSlug } = useAuth()
 
     const [search, setSearch] = useState("")
     const [selectedCategory, setSelectedCategory] = useState("All")
+
+    //dynamic categories and items state
+    const [categories, setCategories] = useState<string[]>(["All"])
+    const [menuItems, setMenuItems] = useState<UIItem[]>([]);
+    const [isMenuLoading, setIsMenuLoading] = useState<boolean>(true);
+
     const [cart, setCart] = useState<CartState>({})
     const [customerName, setCustomerName] = useState('')
     const [isExpanded, setIsExpanded] = useState(false)
@@ -107,6 +96,47 @@ export default function TableOrderingScreen() {
         }
     }, [isOccupied])
 
+    //trigger the parallel network requests when the screen mounts
+    useEffect(() => {
+        const loadMenuData = async () => {
+            if (!tenantSlug) return
+
+            try {
+                setIsMenuLoading(true)
+
+                const [rawMenus, rawItems] = await Promise.all([
+                    fetchMenusApi(tenantSlug),
+                    fetchMenuItemsApi(tenantSlug)
+                ])
+
+                //extract the active categories
+                const categoryNames = rawMenus
+                    .filter((m) => m.active)
+                    .map((m) => m.menuName)
+
+                setCategories(["All", ...new Set(categoryNames)])
+
+                const formattedItems: UIItem[] = rawItems
+                    .filter((item) => item.active)
+                    .map((item) => ({
+                        id: String(item.id),
+                        name: item.name,
+                        price: item.price,
+                        category: item.menuName,
+                        description: item.description || "",
+                        image: item.imageUrl
+                    }));
+
+                setMenuItems(formattedItems)
+            } catch (error) {
+                console.error("Failed to load menu data:", error)
+            } finally {
+                setIsMenuLoading(false)
+            }
+        }
+        loadMenuData()
+    }, [tenantSlug])
+
     const isDirect = tableId === 'direct' || isDirectOrder === 'true'
     const colors = {
         bg: isDark ? "#0F172A" : "#F8FAFC",
@@ -115,8 +145,8 @@ export default function TableOrderingScreen() {
         textMuted: isDark ? "#94A3B8" : "#64748B",
         searchBg: isDark ? "#1E293B" : "#E2E8F0",
         border: isDark ? "#334155" : "#E2E8F0",
-        accentGreen: isDark ? "#22C55E" : "#16A34A",
-        accentGreenBg: isDark ? "#0A251C" : "#DCFCE7",
+        accentMain: "#6366F1",
+        accentMainBg: "#6366F1",
         accentRed: '#EF4444',
         badgeBg: isDark ? "#334155" : "#F1F5F9",
     }
@@ -160,14 +190,14 @@ export default function TableOrderingScreen() {
         )
     }
 
-    const filteredMenuItems = MENU_ITEMS.filter((item) => {
+    const filteredMenuItems = menuItems.filter((item) => {
         const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase())
         const matchesCat = selectedCategory === "All" || item.category === selectedCategory
         return matchesSearch && matchesCat
     })
 
     const cartItemsArray = Object.keys(cart).map((id) => {
-        const item = MENU_ITEMS.find((m) => m.id === id)
+        const item = menuItems.find((m) => m.id === id)
         return { item, quantity: cart[id] }
     }).filter(entry => entry.item !== undefined)
 
@@ -197,16 +227,16 @@ export default function TableOrderingScreen() {
                     </TouchableOpacity>
                     <View style={styles.divider} />
                     {!isDirect && (
-                        <View style={[styles.tableBadge, { backgroundColor: colors.accentGreen }]}>
-                            <Text style={styles.tableBadgeText}>{tableId}</Text>
+                        <View style={[styles.tableBadge, { backgroundColor: colors.accentMain }]}>
+                            <Text style={styles.tableBadgeText}>{displayTableNumber}</Text>
                         </View>
                     )}
                     <View style={{ flex: 1 }}>
                         <Text style={[styles.tableTitle, { color: colors.textMain, fontWeight: "700" }]}>
-                            {isDirect ? "New Order" : `Table ${tableId}`}
+                            {isDirect ? "New Order" : `Table ${displayTableNumber}`}
                         </Text>
                         <Text style={[styles.tableSubtitle, { color: colors.textMuted, fontWeight: "500" }]}>
-                            {isDirect ? "Direct Counter Checkout" : isOccupied ? "Order #ORD-FB4903CC" : "Capacity: 4 | Cash on order"}
+                            {isDirect ? "Direct Counter Checkout" : isOccupied ? "Order #ORD-FB4903CC" : `Capacity: ${capacity} | Cash on order`}
                         </Text>
                     </View>
                 </View>
@@ -229,13 +259,13 @@ export default function TableOrderingScreen() {
                 </View>
 
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRow} contentContainerStyle={{ gap: 8 }}>
-                    {["All", "Lekali Menu One", "Momo", "Sekuwa"].map((cat) => {
+                    {categories.map((cat) => {
                         const isSelected = selectedCategory === cat;
                         return (
                             <TouchableOpacity
                                 key={cat}
                                 onPress={() => setSelectedCategory(cat)}
-                                style={[styles.catChip, { backgroundColor: isSelected ? colors.accentGreen : colors.cardBg, borderColor: isSelected ? colors.accentGreen : colors.border }]}
+                                style={[styles.catChip, { backgroundColor: isSelected ? colors.accentMain : colors.cardBg, borderColor: isSelected ? colors.accentMain : colors.border }]}
                             >
                                 <Text style={[styles.catChipText, { color: isSelected ? "#FFFFFF" : colors.textMuted, fontWeight: isSelected ? "700" : "500" }]}>
                                     {cat}
@@ -245,40 +275,47 @@ export default function TableOrderingScreen() {
                     })}
                 </ScrollView>
 
-                <View style={styles.gridContainer}>
-                    {filteredMenuItems.map((item) => {
-                        const itemQty = cart[item.id] || 0;
-                        return (
-                            <TouchableOpacity
-                                key={item.id}
-                                activeOpacity={0.8}
-                                onPress={() => addToCart(item.id)}
-                                style={[styles.productCard, { backgroundColor: colors.cardBg, borderColor: itemQty > 0 ? colors.accentGreen : colors.border }]}
-                            >
-                                <View style={styles.imageContainer}>
-                                    <Image source={{ uri: item.image }} style={styles.productImage} resizeMode="cover" />
-                                    {itemQty > 0 && (
-                                        <View style={[styles.floatingBadge, { backgroundColor: colors.accentGreen }]}>
-                                            <Text style={styles.floatingBadgeText}>{itemQty}</Text>
-                                        </View>
-                                    )}
-                                </View>
+                {isMenuLoading ? (
+                    <View style={{ padding: 40, alignItems: "center" }}>
+                        <ActivityIndicator size="large" color={colors.accentMain} />
+                        <Text style={{ marginTop: 12, color: colors.textMuted }}>Loading menu...</Text>
+                    </View>
+                ) : (
+                    <View style={styles.gridContainer}>
+                        {filteredMenuItems.map((item) => {
+                            const itemQty = cart[item.id] || 0;
+                            return (
+                                <TouchableOpacity
+                                    key={item.id}
+                                    activeOpacity={0.8}
+                                    onPress={() => addToCart(item.id)}
+                                    style={[styles.productCard, { backgroundColor: colors.cardBg, borderColor: itemQty > 0 ? colors.accentMain : colors.border }]}
+                                >
+                                    <View style={styles.imageContainer}>
+                                        <Image source={{ uri: item.image }} style={styles.productImage} resizeMode="cover" />
+                                        {itemQty > 0 && (
+                                            <View style={[styles.floatingBadge, { backgroundColor: colors.accentMain }]}>
+                                                <Text style={styles.floatingBadgeText}>{itemQty}</Text>
+                                            </View>
+                                        )}
+                                    </View>
 
-                                <View style={styles.productDetailsBox}>
-                                    <Text numberOfLines={1} style={[styles.productName, { color: colors.textMain, fontWeight: "700" }]}>
-                                        {item.name}
-                                    </Text>
-                                    <Text numberOfLines={1} style={[styles.productDesc, { color: colors.textMuted }]}>
-                                        {item.description}
-                                    </Text>
-                                    <Text style={[styles.productPriceText, { color: colors.accentGreen, fontWeight: "700", marginTop: 4 }]}>
-                                        NPR {item.price}
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
+                                    <View style={styles.productDetailsBox}>
+                                        <Text numberOfLines={1} style={[styles.productName, { color: colors.textMain, fontWeight: "700" }]}>
+                                            {item.name}
+                                        </Text>
+                                        <Text numberOfLines={1} style={[styles.productDesc, { color: colors.textMuted }]}>
+                                            {item.description}
+                                        </Text>
+                                        <Text style={[styles.productPriceText, { color: colors.textMain, fontWeight: "700", marginTop: 4 }]}>
+                                            NPR {item.price}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                )}
             </ScrollView>
 
             <View style={[
@@ -347,7 +384,7 @@ export default function TableOrderingScreen() {
                                                 <Text style={[styles.cartItemPriceLabel, { color: colors.textMuted }]}>NPR {item.price}</Text>
                                             </View>
                                             <View style={styles.actionControlsContainer}>
-                                                <View style={[styles.drawerQtyCounterBox, { backgroundColor: "#FFF" }]}>
+                                                <View style={[styles.drawerQtyCounterBox, { backgroundColor: isDark ? "#1E293B" : "#FFF" }]}>
                                                     <TouchableOpacity onPress={() => updateExistingQty(item.id, -1)} style={[styles.qtyControlActionNode, { backgroundColor: "#6366F1" }]}>
                                                         <Minus size={14} color="#FFF" />
                                                     </TouchableOpacity>
@@ -373,7 +410,7 @@ export default function TableOrderingScreen() {
                                                 <Text style={[styles.cartItemNameText, { color: colors.textMain, fontWeight: "600" }]}>{item!.name}</Text>
                                                 <Text style={[styles.cartItemPriceLabel, { color: colors.textMuted }]}>NPR {item!.price}</Text>
                                             </View>
-                                            <View style={[styles.drawerQtyCounterBox, { backgroundColor: "#FFF" }]}>
+                                            <View style={[styles.drawerQtyCounterBox, { backgroundColor: isDark ? "#1E293B" : "#FFF" }]}>
                                                 <TouchableOpacity onPress={() => removeFromCart(item!.id)} style={[styles.qtyControlActionNode, { backgroundColor: "#6366F1" }]}>
                                                     <Minus size={14} color="#FFF" />
                                                 </TouchableOpacity>

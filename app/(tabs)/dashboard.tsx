@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router"
 import { LogOutIcon, Search, Store, User, Users } from "lucide-react-native"
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import {
   Alert,
   Dimensions,
@@ -17,27 +17,40 @@ import Animated, {
   withTiming
 } from "react-native-reanimated"
 
-import { Text } from "../components/AppText"
+import { DiningTable, fetchDiningTablesApi } from "@/services/tableService"
+import Text from "../components/AppText"
+import { useAuth } from "../context/AuthContext"
 import { useTheme } from "../context/ThemeContext"
+
+import * as SecureStore from 'expo-secure-store'; //imported for verification purpose only
 
 const { width } = Dimensions.get("window")
 
 const CARD_WIDTH = (width - 48) / 2
 
-const INITIAL_TABLES = [
-  { id: "1", number: "1", status: "available", capacity: 4 },
-  { id: "2", number: "2", status: "occupied", capacity: 3 },
-  { id: "3", number: "3", status: "available", capacity: 4 },
-  { id: "4", number: "4", status: "occupied", capacity: 2 },
-  { id: "5", number: "5", status: "occupied", capacity: 4 },
-]
+// const INITIAL_TABLES = [
+//   { id: "1", number: "1", status: "available", capacity: 4 },
+//   { id: "2", number: "2", status: "occupied", capacity: 3 },
+//   { id: "3", number: "3", status: "available", capacity: 4 },
+//   { id: "4", number: "4", status: "occupied", capacity: 2 },
+//   { id: "5", number: "5", status: "occupied", capacity: 4 },
+// ]
+
+export interface DiningTableUI {
+  id: string;
+  number: string;
+  status: "available" | "occupied";
+  capacity: number;
+}
 
 export default function DashboardScreen() {
   const { isDark } = useTheme()
   const router = useRouter()
+  const { logout, user, tenantSlug } = useAuth()
   const [search, setSearch] = useState("")
-  const [tables, setTables] = useState<typeof INITIAL_TABLES>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [tables, setTables] = useState<DiningTable[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
   const pulseOpacity = useSharedValue(0.4)
 
@@ -48,13 +61,55 @@ export default function DashboardScreen() {
       true
     );
 
-    const timer = setTimeout(() => {
-      setTables(INITIAL_TABLES)
-      setIsLoading(false)
-    }, 1500)
+    // const timer = setTimeout(() => {
+    //   setTables(INITIAL_TABLES)
+    //   setIsLoading(false)
+    // }, 1500)
 
-    return () => clearTimeout(timer)
+    // return () => clearTimeout(timer)
   }, [])
+
+  const loadTables = useCallback(async (showLoader = true) => {
+    if (!tenantSlug) return;
+
+    try {
+      if (showLoader) setIsLoading(true);
+      const rawData = await fetchDiningTablesApi(tenantSlug);
+
+      // Normalize backend status while keeping the DiningTable type structure
+      const formattedTables: DiningTable[] = rawData.map((t) => ({
+        ...t,
+        status: t.status?.toUpperCase() === "AVAILABLE" ? "available" : "occupied"
+      }));
+
+      setTables(formattedTables);
+    } catch (error) {
+      console.error("Failed to fetch live tables:", error);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  }, [tenantSlug]);
+
+  useEffect(() => {
+    loadTables()
+  }, [loadTables])
+
+  const onRefresh = () => {
+    setRefreshing(true)
+    loadTables(false)
+  }
+
+
+  //this function is for verification purpose only.............
+  const checkStorage = async () => {
+    const token = await SecureStore.getItemAsync('access_token');
+    const userData = await SecureStore.getItemAsync('user_data');
+
+    console.log("🔑 STORED JWT TOKEN:", token);
+    console.log("👤 STORED USER DATA:", JSON.parse(userData || '{}'));
+  }
+
 
   const animatedPulseStyle = useAnimatedStyle(() => ({
     opacity: pulseOpacity.value,
@@ -65,7 +120,7 @@ export default function DashboardScreen() {
   const occupiedTables = totalTables - availableTables
 
   const filteredTables = tables.filter((table) =>
-    table.number.toLowerCase().includes(search.toLowerCase())
+    String(table.tableNumber).toLowerCase().includes(search.toLowerCase())
   )
 
   const colors = {
@@ -83,11 +138,13 @@ export default function DashboardScreen() {
     cardOccupiedBorder: isDark ? "#7F1D1D" : "#FEE2E2",
   }
 
-  const handleTablePress = (table: typeof INITIAL_TABLES[0]) => {
+  const handleTablePress = (table: DiningTable) => {
     router.push({
       pathname: "/tables/[tableId]",
       params: {
-        tableId: table.id,
+        tableId: String(table.id),
+        tableNumber: String(table.tableNumber),
+        capacity: String(table.capacity),
         status: table.status === "occupied" ? "Occupied" : "Available"
       }
     })
@@ -102,7 +159,8 @@ export default function DashboardScreen() {
         {
           text: "Log Out",
           style: "destructive",
-          onPress: () => {
+          onPress: async () => {
+            await logout()
             router.replace("/")
           }
         }
@@ -128,6 +186,13 @@ export default function DashboardScreen() {
               <Text style={[styles.staffName, { color: "#FFFFFF", fontWeight: "700" }]}>Mohan Rai</Text>
             </View>
           </View>
+          {/* ---------FOR TESTING THE JWT AND USER DATA 
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={checkStorage}
+            style={[styles.logoutButton, { backgroundColor: isDark ? "#6366F1" : "#5355F1" }]}>
+            <LogOutIcon size={20} color="#FFFFFF" />
+          </TouchableOpacity> */}
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={handleLogout}
@@ -208,7 +273,7 @@ export default function DashboardScreen() {
                   ]}
                 >
                   <View style={[styles.numberBlock, { backgroundColor: accentColor }]}>
-                    <Text style={[styles.numberText, { fontWeight: "bold" }]}>{table.number}</Text>
+                    <Text style={[styles.numberText, { fontWeight: "bold" }]}>{table.tableNumber}</Text>
                   </View>
 
                   <View style={[styles.badge, { backgroundColor: accentColor }]}>
