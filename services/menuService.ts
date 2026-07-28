@@ -6,8 +6,10 @@ export interface PaginatedData<T> {
     pageSize: number;
     totalElements: number;
     totalPages: number;
-    firstPage: boolean;
-    lastPage: boolean;
+    firstPage?: boolean;
+    lastPage?: boolean;
+    first?: boolean;
+    last?: boolean;
 }
 
 export interface ApiResponse<T> {
@@ -44,7 +46,26 @@ export const fetchMenusApi = async (tenantSlug: string): Promise<Menu[]> => {
     return response.data?.data?.content || []
 };
 
-export const fetchMenuItemsApi = async (tenantSlug: string): Promise<MenuItem[]> => {
-    const response = await api.get(`/public/${tenantSlug}/items/list`);
-    return response.data?.data?.content || []
+export const fetchMenuItemsApi = async (
+    tenantSlug: string,
+    page: number = 0,
+    size: number = 10,
+    search?: string
+): Promise<PaginatedData<MenuItem>> => {
+    const params: Record<string, any> = { page, size };
+    if (search && search.trim() !== "") {
+        params.search = search.trim()
+    }
+
+    const response = await api.get(`/public/${tenantSlug}/items/list`, { params });
+
+    return response.data?.data || {
+        content: [],
+        pageNumber: 0,
+        pageSize: size,
+        totalElements: 0,
+        totalPages: 0,
+        firstPage: true,
+        lastPage: true,
+    }
 }

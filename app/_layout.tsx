@@ -1,6 +1,7 @@
 import { Stack } from "expo-router"
 import * as SplashScreen from "expo-splash-screen"
 import { useEffect } from "react"
+import { AlertProvider } from "./context/AlertContext"
 import { AuthProvider } from "./context/AuthContext"
 import { ThemeProvider } from "./context/ThemeContext"
 
@@ -36,20 +37,22 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            headerStyle: {
-              backgroundColor: '#ababab'
-            },
-            headerTintColor: "#fff",
-            headerTitleStyle: {
-              fontSize: 20,
-              fontFamily: "Inter-Bold",
-            },
-          }}>
-          <Stack.Screen name="index" options={{ title: "Login", headerShown: false }} />
-        </Stack>
+        <AlertProvider>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              headerStyle: {
+                backgroundColor: '#ababab'
+              },
+              headerTintColor: "#fff",
+              headerTitleStyle: {
+                fontSize: 20,
+                fontFamily: "Inter-Bold",
+              },
+            }}>
+            <Stack.Screen name="index" options={{ title: "Login", headerShown: false }} />
+          </Stack>
+        </AlertProvider>
       </ThemeProvider>
     </AuthProvider>
   )

@@ -10,6 +10,16 @@ export interface OrderItem {
     discountAmount?: number | null;
 }
 
+export interface ActiveOrderItem {
+    id: number;
+    itemName: string;
+    quantity: number;
+    price: number;
+    totalPrice: number;
+    discountPercent?: number | null;
+    discountAmount?: number | null;
+}
+
 export interface Order {
     id: number;
     orderNumber: string;
@@ -28,9 +38,25 @@ export interface Order {
     paymentMethod?: string;
     paymentStatus?: string;
     orderedAt: string;
-    tableNumber?: number;
+    tableNumber?: number | null;
     items: OrderItem[];
 }
+
+export type OrderStatus =
+    | "PENDING"
+    | "CONFIRMED"
+    | "PREPARING"
+    | "OUT_FOR_DELIVERY"
+    | "DELIVERED"
+    | "CANCELLED";
+
+export type PaymentStatus =
+    | "INITIATED"
+    | "PENDING"
+    | "PAID"
+    | "FAILED"
+    | "CANCELLED"
+    | "REFUNDED";
 
 export interface PaginatedData<T> {
     content: T[];
@@ -40,6 +66,27 @@ export interface PaginatedData<T> {
     totalPages: number;
     firstPage: boolean;
     last: boolean;
+}
+
+export interface ActiveTableOrderData {
+    id: number;
+    orderNumber: string;
+    status: "CONFIRMED" | "DELIVERED" | "PENDING" | string;
+    totalAmount: number;
+    customerName?: string;
+    customerPhone?: string;
+    customerAddress?: string;
+    paymentMethod?: string;
+    paymentStatus?: string;
+    orderedAt?: string;
+    tableNumber?: number;
+    items: ActiveOrderItem[];
+}
+
+export interface UpdatePaymentStatusPayload {
+    paymentStatus: PaymentStatus;
+    paymentMethod: string;
+    manualDiscount?: number;
 }
 
 export interface OrderApiResponse {
@@ -60,6 +107,60 @@ export interface SingleOrderApiResponse {
     timestamp: string;
 }
 
+export interface ActiveTableOrderApiResponse {
+    success: boolean;
+    message: string;
+    data: ActiveTableOrderData | null;
+    status: number;
+    errors?: string | null;
+    timestamp: string;
+}
+
+export interface CreateOrderItemPayload {
+    itemId: number;
+    quantity: number;
+}
+
+export interface CreateOrderPayload {
+    customerName?: string;
+    customerPhone?: string;
+    customerAddress?: string;
+    customerNote?: string;
+    paymentMethod?: string;
+    promoCode?: string;
+    idempotencyKey?: string;
+    items: CreateOrderItemPayload[];
+}
+
+export interface CreateTableOrderPayload {
+    tableId: number;
+    customerName?: string;
+    customerPhone?: string;
+    customerAddress?: string;
+    items: Array<{
+        itemId: number;
+        quantity: number;
+    }>;
+    orderedAt: string;
+    idempotencyKey: string;
+}
+
+
+export interface AddOrderItemsPayload {
+    idempotencyKey?: string;
+    items: Array<{
+        itemId: number;
+        quantity: number;
+    }>;
+}
+
+export const generateIdempotencyKey = (): string => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+    }
+    return `ord_ik_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
 export const fetchOrdersApi = async (tenantSlug: string): Promise<Order[]> => {
     const response = await api.get<OrderApiResponse>(`public/${tenantSlug}/order`);
     return response.data?.data?.content || []
@@ -68,4 +169,47 @@ export const fetchOrdersApi = async (tenantSlug: string): Promise<Order[]> => {
 export const fetchOrderByIdApi = async (tenantSlug: string, orderId: string | number): Promise<Order | null> => {
     const response = await api.get<SingleOrderApiResponse>(`public/${tenantSlug}/order/${orderId}`)
     return response.data?.data || null
+}
+
+export const fetchActiveOrderByTableIdApi = async (tenantSlug: string, tableId: string | number): Promise<ActiveTableOrderApiResponse> => {
+    const response = await api.get<ActiveTableOrderApiResponse>(`/public/${tenantSlug}/order/table/${tableId}`)
+    return response.data;
+}
+
+//for the direct order
+export const createOrderApi = async (tenantSlug: string, payload: CreateOrderPayload): Promise<Order> => {
+    const requestBody = {
+        customerName: payload.customerName?.trim() || "Walk-in Customer",
+        customerPhone: payload.customerPhone?.trim() || "0000000000",
+        customerAddress: payload.customerAddress?.trim() || "Counter",
+        customerNote: payload.customerNote?.trim() || "",
+        paymentMethod: payload.paymentMethod || "CASH",
+        promoCode: payload.promoCode?.trim() || "",
+        idempotencyKey: payload.idempotencyKey || generateIdempotencyKey(),
+        items: payload.items,
+    };
+
+    const response = await api.post<SingleOrderApiResponse>(`public/${tenantSlug}/order`, requestBody)
+
+    return response.data.data;
+}
+
+export const createTableOrderApi = async (tenantSlug: string, payload: CreateTableOrderPayload) => {
+    const response = await api.post(`/public/${tenantSlug}/order/table-order`, payload)
+    return response.data;
+}
+
+export const addItemsToOrderApi = async (tenantSlug: string, orderId: string | number, payload: AddOrderItemsPayload) => {
+    const response = await api.post(`/public/${tenantSlug}/order/${orderId}/items`, payload);
+    return response.data
+}
+
+export const updateOrderStatusApi = async (tenantSlug: string, orderId: string | number, status: OrderStatus) => {
+    const response = await api.put(`/public/${tenantSlug}/order/${orderId}/status`, { status });
+    return response.data
+}
+
+export const updatePaymentStatusApi = async (tenantSlug: string, orderId: string | number, payload: UpdatePaymentStatusPayload) => {
+    const response = await api.put(`/public/${tenantSlug}/order/${orderId}/paymentStatus`, payload);
+    return response.data;
 }

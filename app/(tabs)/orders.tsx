@@ -51,7 +51,6 @@ export default function OrdersScreen() {
 
   const loadOrders = useCallback(async (showLoader = true) => {
     if (!tenantSlug) return
-
     try {
       if (showLoader) {
         setIsLoading(true)

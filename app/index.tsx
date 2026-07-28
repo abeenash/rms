@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -8,7 +7,7 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import Text from "./components/AppText";
@@ -22,6 +21,7 @@ import Animated, {
   withDelay,
   withTiming
 } from "react-native-reanimated";
+import { useCustomAlert } from "./context/AlertContext";
 import { useAuth } from "./context/AuthContext";
 import { useTheme } from "./context/ThemeContext";
 
@@ -35,11 +35,12 @@ const LoginScreen = () => {
 
   const { login } = useAuth()
   const router = useRouter()
+  const { showAlert } = useCustomAlert()
 
   const handleLogin = async () => {
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !password) {
-      Alert.alert("ERROR!", "Please fill in your email and password.")
+      showAlert("Error", "Please fill in your email and password.")
       return;
     }
     try {
@@ -48,7 +49,7 @@ const LoginScreen = () => {
       router.replace("/dashboard");
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || error.message || "Invalid Details";
-      Alert.alert("LOGIN FAILED!", errorMessage);
+      showAlert("LOGIN FAILED!", errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -103,10 +104,6 @@ const LoginScreen = () => {
     opacity: cardOpacity.value,
     transform: [{ translateX: cardTranslateX.value }],
   }));
-
-  // const handleLogin = () => {
-  //   console.log("Logging in with:", email, password);
-  // };
 
   return (
     <KeyboardAvoidingView
