@@ -1,76 +1,68 @@
-import { useEffect, useState } from "react"
+import { Calendar, Tag, TicketPercent } from "lucide-react-native"
+import React, { useCallback, useEffect, useState } from "react"
 import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native"
-import { useTheme } from "../context/ThemeContext"
-
-
-import { Calendar, Tag } from "lucide-react-native"
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated"
-import { Text } from "../components/AppText"
 
-//mock data
-const DUMMY_PROMOS = [
-  {
-    id: "PRM-FIRSTBITES",
-    title: "Firstbites",
-    description: "20% off your first order or a free appetizer",
-    validity: "Valid till July 20, 2026",
-    badge: "New Users",
-  },
-  {
-    id: "PRM-HATTARKHAJA",
-    title: "HattarKhaja",
-    description: "Free drink or side during lunch hours",
-    validity: "Valid till July 22, 2026",
-    badge: "Lunch Special",
-  },
-  {
-    id: "PRM-MOMOPARTY",
-    title: "MomoParty",
-    description: "Buy two plates of momo, get the third half off.",
-    validity: "Valid till July 24, 2026",
-    badge: "Combo Deal",
-  },
-]
+import { fetchPromoCodesApi, PromoCode } from "@/services/promoService"
+import Text from "../components/AppText"
+import { useAuth } from "../context/AuthContext"
+import { useTheme } from "../context/ThemeContext"
 
 export default function PromoScreen() {
   const { isDark } = useTheme()
+  const { tenantSlug } = useAuth()
+
+  const [promos, setPromos] = useState<PromoCode[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const pulseOpacity = useSharedValue(0.4)
 
-  const startLoadingSequence = () => {
-    setLoading(true)
-    pulseOpacity.value = withRepeat(withTiming(1, { duration: 800 }), -1, true)
-
-    setTimeout(() => {
+  const loadPromos = useCallback(async () => {
+    if (!tenantSlug) return
+    try {
+      setLoading(true)
+      pulseOpacity.value = withRepeat(withTiming(1, { duration: 800 }), -1, true)
+      const data = await fetchPromoCodesApi(tenantSlug)
+      setPromos(data)
+    } catch (error) {
+      console.error("Failed to load promo screen data:", error)
+    } finally {
       setLoading(false)
       setRefreshing(false)
-    }, 1500)
-  }
+    }
+  }, [tenantSlug, pulseOpacity])
 
   useEffect(() => {
-    startLoadingSequence()
-  }, [])
+    loadPromos()
+  }, [loadPromos])
 
   const onRefresh = () => {
     setRefreshing(true)
-    startLoadingSequence()
+    loadPromos()
   }
 
   const animatedPulseStyle = useAnimatedStyle(() => ({
-    opacity: pulseOpacity.value
+    opacity: pulseOpacity.value,
   }))
 
   const colors = {
     bg: isDark ? "#0F172A" : "#F8FAFC",
     cardBg: isDark ? "#1E293B" : "#FFFFFF",
     textMain: isDark ? "#FFFFFF" : "#0F172A",
-    textMuted: isDark ? "#FFFFFF" : "#0F172A",
+    textMuted: isDark ? "#94A3B8" : "#64748B",
     border: isDark ? "#334155" : "#E2E8F0",
     skeletonBlock: isDark ? "#344155" : "#E2E8F0",
     promoAccent: isDark ? "#818CF8" : "#4F46E5",
-    promoBadgeBg: isDark ? "#1E1B4B" : "#EEF2FF"
+    promoBadgeBg: isDark ? "#1E1B4B" : "#EEF2FF",
+    emptyBg: isDark ? "#1E293B" : "#F1F5F9",
+  }
+
+  const formatDate = (isoString?: string) => {
+    if (!isoString) return "N/A"
+    const date = new Date(isoString)
+    if (isNaN(date.getTime())) return "N/A"
+    return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
   }
 
   return (
@@ -83,7 +75,6 @@ export default function PromoScreen() {
       }
     >
       <View style={styles.contentPadding}>
-
         <Text style={[styles.sectionTitle, { color: colors.textMain, fontWeight: "700" }]}>
           Active Promotions
         </Text>
@@ -91,7 +82,7 @@ export default function PromoScreen() {
         <View style={styles.promosList}>
           {loading ? (
             Array.from({ length: 3 }).map((_, idx) => (
-              <View key={`promo-sk-${idx}`} style={[styles.promoCard, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+              <View key={`promo-sk-${idx}`} style={[styles.promoCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                 <View style={styles.cardHeader}>
                   <Animated.View style={[styles.skBlock, { width: 120, height: 18, backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
                   <Animated.View style={[styles.skBlock, { width: 85, height: 22, borderRadius: 8, backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
@@ -102,8 +93,21 @@ export default function PromoScreen() {
                 </View>
               </View>
             ))
+          ) : promos.length === 0 ? (
+            /* EMPTY STATE FOR WAITER */
+            <View style={[styles.emptyContainer, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <View style={[styles.emptyIconCircle, { backgroundColor: colors.emptyBg }]}>
+                <TicketPercent size={36} color={colors.promoAccent} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: colors.textMain, fontWeight: "700" }]}>
+                No Active Promo Codes
+              </Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
+                There are currently no active promotional offers or discounts available.
+              </Text>
+            </View>
           ) : (
-            DUMMY_PROMOS.map((promo) => (
+            promos.map((promo) => (
               <TouchableOpacity
                 key={promo.id}
                 activeOpacity={0.8}
@@ -113,19 +117,19 @@ export default function PromoScreen() {
                   <View style={styles.titleRow}>
                     <Tag size={16} color={colors.promoAccent} />
                     <Text style={[styles.promoTitleText, { color: colors.textMain, fontWeight: "700" }]}>
-                      {promo.title}
+                      {promo.code}
                     </Text>
                   </View>
                   <View style={[styles.statusBadge, { backgroundColor: colors.promoBadgeBg }]}>
                     <Text style={[styles.statusBadgeText, { color: colors.promoAccent, fontWeight: "700" }]}>
-                      {promo.badge}
+                      {promo.discountPercent}% OFF
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.descriptionContainer}>
                   <Text style={[styles.descriptionText, { color: colors.textMain, fontWeight: "500" }]}>
-                    {promo.description}
+                    {promo.description || `Get ${promo.discountPercent}% off on orders above NPR ${promo.minOrderAmount}`}
                   </Text>
                 </View>
 
@@ -133,7 +137,7 @@ export default function PromoScreen() {
                   <View style={styles.timeContainer}>
                     <Calendar size={13} color={colors.textMuted} />
                     <Text style={[styles.timeText, { color: colors.textMuted, fontWeight: "600" }]}>
-                      {promo.validity}
+                      Valid till {formatDate(promo.validUntil)}
                     </Text>
                   </View>
                 </View>
@@ -225,5 +229,30 @@ const styles = StyleSheet.create({
   },
   skBlock: {
     borderRadius: 4,
+  },
+  emptyContainer: {
+    padding: 28,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 18,
   },
 })

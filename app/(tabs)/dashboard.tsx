@@ -1,9 +1,10 @@
-import { useRouter } from "expo-router"
-import { LogOutIcon, Search, Store, User, Users } from "lucide-react-native"
-import React, { useEffect, useState } from "react"
+import { useFocusEffect, useRouter } from "expo-router"
+import { LogOut, Moon, MoreVertical, Search, Store, Sun, User, Users } from "lucide-react-native"
+import React, { useCallback, useEffect, useState } from "react"
 import {
-  Alert,
   Dimensions,
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -11,34 +12,46 @@ import {
   View
 } from "react-native"
 import Animated, {
+  Easing,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withTiming
 } from "react-native-reanimated"
 
-import { Text } from "../components/AppText"
+import { DiningTable, fetchDiningTablesApi } from "@/services/tableService"
+import Text from "../components/AppText"
+import { useCustomAlert } from "../context/AlertContext"
+import { useAuth } from "../context/AuthContext"
 import { useTheme } from "../context/ThemeContext"
 
-const { width } = Dimensions.get("window")
 
+
+const { width } = Dimensions.get("window")
 const CARD_WIDTH = (width - 48) / 2
 
-const INITIAL_TABLES = [
-  { id: "1", number: "1", status: "available", capacity: 4 },
-  { id: "2", number: "2", status: "occupied", capacity: 3 },
-  { id: "3", number: "3", status: "available", capacity: 4 },
-  { id: "4", number: "4", status: "occupied", capacity: 2 },
-  { id: "5", number: "5", status: "occupied", capacity: 4 },
-]
+export interface DiningTableUI {
+  id: string;
+  number: string;
+  status: "available" | "occupied";
+  capacity: number;
+}
 
 export default function DashboardScreen() {
-  const { isDark } = useTheme()
+  const { isDark, toggleTheme } = useTheme()
   const router = useRouter()
+  const { logout, user, tenantSlug } = useAuth()
+  const { showAlert } = useCustomAlert()
   const [search, setSearch] = useState("")
-  const [tables, setTables] = useState<typeof INITIAL_TABLES>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [tables, setTables] = useState<DiningTable[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [refreshing, setRefreshing] = useState<boolean>(false)
 
+  // Popover Menu State & Animations
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const menuTranslateY = useSharedValue(-15)
+  const menuOpacity = useSharedValue(0)
   const pulseOpacity = useSharedValue(0.4)
 
   useEffect(() => {
@@ -46,15 +59,110 @@ export default function DashboardScreen() {
       withTiming(1, { duration: 800 }),
       -1,
       true
-    );
-
-    const timer = setTimeout(() => {
-      setTables(INITIAL_TABLES)
-      setIsLoading(false)
-    }, 1500)
-
-    return () => clearTimeout(timer)
+    )
   }, [])
+
+  useEffect(() => {
+    if (isMenuOpen) {
+      menuTranslateY.value = -12
+      menuOpacity.value = 0
+
+      menuOpacity.value = withTiming(1, { duration: 140 })
+      menuTranslateY.value = withTiming(0, {
+        duration: 140,
+        easing: Easing.out(Easing.quad),
+      })
+    }
+  }, [isMenuOpen])
+
+  const closeMenu = (callback?: () => void) => {
+    menuOpacity.value = withTiming(0, { duration: 100 })
+    menuTranslateY.value = withTiming(-8, { duration: 100 }, (finished) => {
+      if (finished) {
+        runOnJS(setIsMenuOpen)(false)
+        if (callback) {
+          runOnJS(callback)()
+        }
+      }
+    })
+  }
+
+  const toggleMenu = () => {
+    if (isMenuOpen) {
+      closeMenu()
+    } else {
+      setIsMenuOpen(true)
+    }
+  }
+
+  const animatedMenuStyles = useAnimatedStyle(() => ({
+    opacity: menuOpacity.value,
+    transform: [{ translateY: menuTranslateY.value }],
+  }))
+
+  const loadTables = useCallback(async (showLoader = true) => {
+    if (!tenantSlug) return
+
+    try {
+      if (showLoader) setIsLoading(true)
+      const rawData = await fetchDiningTablesApi(tenantSlug)
+
+      const formattedTables: DiningTable[] = rawData.map((t) => ({
+        ...t,
+        status: t.status?.toUpperCase() === "AVAILABLE" ? "available" : "occupied"
+      }))
+
+      setTables(formattedTables)
+    } catch (error) {
+      console.error("Failed to fetch live tables:", error)
+    } finally {
+      setIsLoading(false)
+      setRefreshing(false)
+    }
+  }, [tenantSlug])
+
+  // Initial Fetch
+  useEffect(() => {
+    loadTables()
+  }, [loadTables])
+
+  // ⚡ Auto-refresh tables whenever dashboard screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadTables(false)
+    }, [loadTables])
+  )
+
+  const handleTablePress = (table: DiningTable) => {
+    router.push({
+      pathname: "/tables/[tableId]",
+      params: {
+        tableId: String(table.id),
+        tableNumber: String(table.tableNumber),
+        capacity: String(table.capacity),
+        status: table.status === "occupied" ? "Occupied" : "Available",
+        currentOrderId: table.currentOrderId ? String(table.currentOrderId) : ""
+      }
+    })
+  }
+
+  const handleLogout = () => {
+    showAlert(
+      "Sign Out",
+      "Are you sure you want to log out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log Out",
+          style: "destructive",
+          onPress: async () => {
+            await logout()
+            router.replace("/")
+          }
+        }
+      ]
+    )
+  }
 
   const animatedPulseStyle = useAnimatedStyle(() => ({
     opacity: pulseOpacity.value,
@@ -65,7 +173,7 @@ export default function DashboardScreen() {
   const occupiedTables = totalTables - availableTables
 
   const filteredTables = tables.filter((table) =>
-    table.number.toLowerCase().includes(search.toLowerCase())
+    String(table.tableNumber).toLowerCase().includes(search.toLowerCase())
   )
 
   const colors = {
@@ -81,154 +189,194 @@ export default function DashboardScreen() {
     cardAvailableBorder: isDark ? "#14532D" : "#DCFCE7",
     cardOccupiedBg: isDark ? "#2A1414" : "#FEF2F2",
     cardOccupiedBorder: isDark ? "#7F1D1D" : "#FEE2E2",
-  }
-
-  const handleTablePress = (table: typeof INITIAL_TABLES[0]) => {
-    router.push({
-      pathname: "/tables/[tableId]",
-      params: {
-        tableId: table.id,
-        status: table.status === "occupied" ? "Occupied" : "Available"
-      }
-    })
-  }
-
-  const handleLogout = () => {
-    Alert.alert(
-      "Sign Out",
-      "Are you sure you want to log out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Log Out",
-          style: "destructive",
-          onPress: () => {
-            router.replace("/")
-          }
-        }
-      ]
-    )
+    popoverBg: isDark ? "#1E293B" : "#FFFFFF",
+    popoverBorder: isDark ? "#334155" : "#E2E8F0",
   }
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.bg }]}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    >
-
-      <View style={[styles.profileHeader, { backgroundColor: isDark ? "#1E293B" : "#6366F1" }]}>
-        <View style={styles.profileRow}>
-          <View style={styles.profileLeft}>
-            <View style={[styles.avatarBox, { backgroundColor: "rgba(255,255,255,0.1)" }]}>
-              <User size={20} color="#FFFFFF" />
-            </View>
-            <View style={styles.staffInfo}>
-              <Text style={[styles.staffLabel, { color: "#FFFFFF" }]}>Staff member</Text>
-              <Text style={[styles.staffName, { color: "#FFFFFF", fontWeight: "700" }]}>Mohan Rai</Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={handleLogout}
-            style={[styles.logoutButton, { backgroundColor: isDark ? "#6366F1" : "#5355F1" }]}>
-            <LogOutIcon size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-        <View style={[styles.storeRow, { borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.2)" }]}>
-          <Store size={14} color="#FFFFFF" />
-          <Text style={[styles.storeText, { color: "#FFFFFF", fontWeight: "500" }]}>lekali-sekuwa branch</Text>
-        </View>
-      </View>
-
-      <View style={styles.contentPadding}>
-        <View style={[styles.searchContainer, { backgroundColor: colors.searchBg }]}>
-          <Search size={18} color={colors.textMuted} style={styles.searchIcon} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.textMain, fontFamily: "Inter-Regular" }]}
-            placeholder="Search table by number..."
-            placeholderTextColor={colors.textMuted}
-            keyboardType="numeric"
-            value={search}
-            editable={!isLoading}
-            onChangeText={setSearch}
-          />
-        </View>
-
-        <Text style={[styles.title, { color: colors.textMain, fontWeight: "700" }]}>
-          Select a Table
-        </Text>
-
-        {isLoading ? (
-          <View style={styles.metricsContainer}>
-            <Animated.View style={[styles.metricsSkeleton, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
-            <Animated.View style={[styles.metricsSkeleton, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
-          </View>
-        ) : (
-          <View style={styles.metricsContainer}>
-            <View style={[styles.metricCard, { backgroundColor: colors.cardAvailableBg, borderColor: colors.cardAvailableBorder }]}>
-              <Text style={[styles.metricNumber, { color: colors.availableAccent }]}>{availableTables}</Text>
-              <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Available</Text>
-            </View>
-
-            <View style={[styles.metricCard, { backgroundColor: colors.cardOccupiedBg, borderColor: colors.cardOccupiedBorder }]}>
-              <Text style={[styles.metricNumber, { color: colors.occupiedAccent }]}>{occupiedTables}</Text>
-              <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Occupied</Text>
-            </View>
-          </View>
-        )}
-
-        <View style={styles.grid}>
-          {isLoading
-            ? Array.from({ length: 4 }).map((_, index) => (
-              <View key={`skeleton-${index}`} style={[styles.card, { backgroundColor: colors.cardDefault, borderColor: "transparent" }]}>
-                <Animated.View style={[styles.skeletonSquare, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
-                <Animated.View style={[styles.skeletonBadge, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
-                <Animated.View style={[styles.skeletonTextLine, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.bg }]}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile Header */}
+        <View style={[styles.profileHeader, { backgroundColor: isDark ? "#1E293B" : "#6366F1" }]}>
+          <View style={styles.profileRow}>
+            <View style={styles.profileLeft}>
+              <View style={[styles.avatarBox, { backgroundColor: "rgba(255,255,255,0.15)" }]}>
+                <User size={20} color="#FFFFFF" />
               </View>
-            ))
-            : filteredTables.map((table) => {
-              const isAvailable = table.status === "available"
+              <View style={styles.staffInfo}>
+                <Text style={[styles.staffLabel, { color: "rgba(255,255,255,0.75)" }]}>Staff member</Text>
+                <Text style={[styles.staffName, { color: "#FFFFFF", fontWeight: "700" }]}>Mohan Rai</Text>
+              </View>
+            </View>
 
-              const cardBg = isAvailable ? colors.cardAvailableBg : colors.cardOccupiedBg
-              const cardBorder = isAvailable ? colors.cardAvailableBorder : colors.cardOccupiedBorder
-              const accentColor = isAvailable ? colors.availableAccent : colors.occupiedAccent
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={toggleMenu}
+              style={styles.threeDotsButton}
+            >
+              <MoreVertical size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
 
-              return (
-                <TouchableOpacity
-                  key={table.id}
-                  activeOpacity={0.7}
-                  onPress={() => handleTablePress(table)}
-                  style={[
-                    styles.card,
-                    {
-                      backgroundColor: cardBg,
-                      borderColor: cardBorder,
-                    }
-                  ]}
-                >
-                  <View style={[styles.numberBlock, { backgroundColor: accentColor }]}>
-                    <Text style={[styles.numberText, { fontWeight: "bold" }]}>{table.number}</Text>
-                  </View>
-
-                  <View style={[styles.badge, { backgroundColor: accentColor }]}>
-                    <Text style={[styles.badgeText, { fontWeight: "700" }]}>
-                      {table.status}
-                    </Text>
-                  </View>
-
-                  <View style={styles.capacityContainer}>
-                    <Users size={13} color={colors.textMuted} style={styles.capacityIcon} />
-                    <Text style={[styles.capacityText, { color: colors.textMuted, fontWeight: "600" }]}>
-                      Capacity: {table.capacity}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              )
-            })}
+          <View style={[styles.storeRow, { borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.2)" }]}>
+            <Store size={14} color="#FFFFFF" />
+            <Text style={[styles.storeText, { color: "#FFFFFF", fontWeight: "500" }]}>lekali-sekuwa branch</Text>
+          </View>
         </View>
-      </View>
-    </ScrollView>
+
+        <View style={styles.contentPadding}>
+          <View style={[styles.searchContainer, { backgroundColor: colors.searchBg }]}>
+            <Search size={18} color={colors.textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.textMain, fontFamily: "Inter-Regular" }]}
+              placeholder="Search table by number..."
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              value={search}
+              editable={!isLoading}
+              onChangeText={setSearch}
+            />
+          </View>
+
+          <Text style={[styles.title, { color: colors.textMain, fontWeight: "700" }]}>
+            Select a Table
+          </Text>
+
+          {isLoading ? (
+            <View style={styles.metricsContainer}>
+              <Animated.View style={[styles.metricsSkeleton, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
+              <Animated.View style={[styles.metricsSkeleton, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
+            </View>
+          ) : (
+            <View style={styles.metricsContainer}>
+              <View style={[styles.metricCard, { backgroundColor: colors.cardAvailableBg, borderColor: colors.cardAvailableBorder }]}>
+                <Text style={[styles.metricNumber, { color: colors.availableAccent }]}>{availableTables}</Text>
+                <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Available</Text>
+              </View>
+
+              <View style={[styles.metricCard, { backgroundColor: colors.cardOccupiedBg, borderColor: colors.cardOccupiedBorder }]}>
+                <Text style={[styles.metricNumber, { color: colors.occupiedAccent }]}>{occupiedTables}</Text>
+                <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Occupied</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.grid}>
+            {isLoading
+              ? Array.from({ length: 4 }).map((_, index) => (
+                <View key={`skeleton-${index}`} style={[styles.card, { backgroundColor: colors.cardDefault, borderColor: "transparent" }]}>
+                  <Animated.View style={[styles.skeletonSquare, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
+                  <Animated.View style={[styles.skeletonBadge, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
+                  <Animated.View style={[styles.skeletonTextLine, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
+                </View>
+              ))
+              : filteredTables.map((table) => {
+                const isAvailable = table.status === "available"
+
+                const cardBg = isAvailable ? colors.cardAvailableBg : colors.cardOccupiedBg
+                const cardBorder = isAvailable ? colors.cardAvailableBorder : colors.cardOccupiedBorder
+                const accentColor = isAvailable ? colors.availableAccent : colors.occupiedAccent
+
+                return (
+                  <TouchableOpacity
+                    key={table.id}
+                    activeOpacity={0.7}
+                    onPress={() => handleTablePress(table)}
+                    style={[
+                      styles.card,
+                      {
+                        backgroundColor: cardBg,
+                        borderColor: cardBorder,
+                      }
+                    ]}
+                  >
+                    <View style={[styles.numberBlock, { backgroundColor: accentColor }]}>
+                      <Text style={[styles.numberText, { fontWeight: "bold" }]}>{table.tableNumber}</Text>
+                    </View>
+
+                    <View style={[styles.badge, { backgroundColor: accentColor }]}>
+                      <Text style={[styles.badgeText, { fontWeight: "700" }]}>
+                        {table.status}
+                      </Text>
+                    </View>
+
+                    <View style={styles.capacityContainer}>
+                      <Users size={13} color={colors.textMuted} style={styles.capacityIcon} />
+                      <Text style={[styles.capacityText, { color: colors.textMuted, fontWeight: "600" }]}>
+                        Capacity: {table.capacity}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )
+              })}
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Transparent Modal for Popover Dropdown */}
+      <Modal
+        visible={isMenuOpen}
+        transparent
+        animationType="none"
+        onRequestClose={toggleMenu}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => closeMenu()}
+        >
+          <Pressable style={styles.popoverPositioner} onPress={(e) => e.stopPropagation()}>
+            <Animated.View
+              style={[
+                styles.dropdownPopover,
+                animatedMenuStyles,
+                {
+                  backgroundColor: colors.popoverBg,
+                  borderColor: colors.popoverBorder,
+                }
+              ]}
+            >
+              <TouchableOpacity
+                activeOpacity={0.6}
+                onPress={() => {
+                  toggleTheme()
+                  closeMenu()
+                }}
+                style={styles.menuRowItem}
+              >
+                {isDark ? (
+                  <Sun size={18} color="#FBBF24" />
+                ) : (
+                  <Moon size={18} color="#4F46E5" />
+                )}
+                <Text style={[styles.menuItemLabelText, { color: colors.textMain }]}>
+                  {isDark ? "Light Mode" : "Dark Mode"}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={[styles.dropdownDividerLine, { backgroundColor: colors.popoverBorder }]} />
+
+              <TouchableOpacity
+                activeOpacity={0.6}
+                onPress={() => {
+                  closeMenu(() => handleLogout())
+                }}
+                style={styles.menuRowItem}
+              >
+                <LogOut size={18} color="#EF4444" />
+                <Text style={[styles.menuItemLabelText, { color: "#EF4444", fontWeight: "600" }]}>
+                  Log Out
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </Pressable>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   )
 }
 
@@ -256,12 +404,13 @@ const styles = StyleSheet.create({
   profileRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "space-between",
   },
   profileLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    flex: 1,
   },
   avatarBox: {
     width: 42,
@@ -290,14 +439,50 @@ const styles = StyleSheet.create({
   storeText: {
     fontSize: 13,
   },
-  logoutButton: {
+  threeDotsButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
     justifyContent: "center",
     alignItems: "center",
-    left: 120,
-    top: 12,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+  popoverPositioner: {
+    position: "absolute",
+    top: 56,
+    right: 20,
+  },
+  dropdownPopover: {
+    width: 150,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  menuRowItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  menuItemLabelText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  dropdownDividerLine: {
+    height: 1,
+    marginVertical: 2,
   },
   title: {
     fontSize: 22,
