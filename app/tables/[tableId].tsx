@@ -18,7 +18,6 @@ export default function TableOrderingScreen() {
         capacity,
         isDirect,
         isOccupied,
-        router,
         search,
         setSearch,
         selectedCategory,
@@ -45,7 +44,10 @@ export default function TableOrderingScreen() {
         updateExistingQty,
         removeExistingItem,
         loadMoreItems,
-        handleConfirmOrder, } = useTableOrdering()
+        handleConfirmOrder,
+        handleBackNavigation,
+
+    } = useTableOrdering()
 
     const colors = {
         bg: isDark ? "#0F172A" : "#F8FAFC",
@@ -85,7 +87,7 @@ export default function TableOrderingScreen() {
                 capacity={capacity}
                 isOccupied={isOccupied}
                 insetsTop={insets.top}
-                onBack={() => router.back()}
+                onBack={handleBackNavigation}
                 colors={colors}
             />
 

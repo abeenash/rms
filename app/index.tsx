@@ -49,7 +49,7 @@ const LoginScreen = () => {
       router.replace("/dashboard");
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || error.message || "Invalid Details";
-      showAlert("LOGIN FAILED!", errorMessage);
+      showAlert("LOGIN FAILED!", "Please check your email or password");
     } finally {
       setIsLoading(false);
     }

@@ -132,8 +132,8 @@ isExpanded,
                                                         <Plus size={14} color="#FFF" />
                                                     </TouchableOpacity>
                                                 </View>
-                                                <TouchableOpacity onPress={() => onRemoveExistingItem(item.id, item.name)} style={[styles.deleteActionButton, { backgroundColor: '#FEE2E2' }]}>
-                                                    <X size={14} color={colors.accentRed} />
+                                                <TouchableOpacity onPress={() => onRemoveExistingItem(item.id, item.name)} style={styles.deleteActionButton}>
+                                                    <X size={18} color={colors.accentRed} />
                                                 </TouchableOpacity>
                                             </View>
                                         </View>

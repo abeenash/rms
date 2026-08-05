@@ -5,6 +5,7 @@ import {
   Dimensions,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -25,8 +26,6 @@ import Text from "../components/AppText"
 import { useCustomAlert } from "../context/AlertContext"
 import { useAuth } from "../context/AuthContext"
 import { useTheme } from "../context/ThemeContext"
-
-
 
 const { width } = Dimensions.get("window")
 const CARD_WIDTH = (width - 48) / 2
@@ -121,17 +120,21 @@ export default function DashboardScreen() {
     }
   }, [tenantSlug])
 
-  // Initial Fetch
-  useEffect(() => {
-    loadTables()
-  }, [loadTables])
+  // i guess initial fetch not needed. it will slow down the response.
+  // useEffect(() => {
+  //   loadTables()
+  // }, [loadTables])
 
-  // ⚡ Auto-refresh tables whenever dashboard screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadTables(false)
     }, [loadTables])
   )
+
+  const onRefresh = () => {
+    setRefreshing(true)
+    loadTables(false)
+  }
 
   const handleTablePress = (table: DiningTable) => {
     router.push({
@@ -199,6 +202,7 @@ export default function DashboardScreen() {
         style={[styles.container, { backgroundColor: colors.bg }]}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textMain} />}
       >
         {/* Profile Header */}
         <View style={[styles.profileHeader, { backgroundColor: isDark ? "#1E293B" : "#6366F1" }]}>

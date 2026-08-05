@@ -1,6 +1,7 @@
+import { setOnUnauthorizedCallback } from "@/services/api";
 import { loginApi, LoginPayload, UserResponse } from "@/services/authService";
 import * as SecureStore from 'expo-secure-store';
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 interface AuthContextType {
     token: string | null;
@@ -18,6 +19,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<UserResponse | null>(null)
     const [isLoading, setIsLoading] = useState<boolean>(true)
 
+    const logout = useCallback(async () => {
+        try {
+            await SecureStore.deleteItemAsync('access_token')
+            await SecureStore.deleteItemAsync('user_data')
+        } catch (e) {
+            console.error("Error during logout cleanup:", e);
+        } finally {
+            setToken(null)
+            setUser(null)
+        }
+    }, [])
+
+    useEffect(() => {
+        setOnUnauthorizedCallback(logout);
+    }, [logout])
+
     useEffect(() => {
         const restoreSession = async () => {
             try {
@@ -33,7 +50,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setIsLoading(false)
             }
         };
-
         restoreSession()
     }, []);
 
@@ -60,13 +76,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }
 
-    const logout = async() =>{
-        await SecureStore.deleteItemAsync('access_token')
-        await SecureStore.deleteItemAsync('user_data')
-        setToken(null)
-        setUser(null)
-    }
-
     return (
         <AuthContext.Provider
             value={{
@@ -82,9 +91,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     )
 }
 
-export const useAuth = () =>{
+export const useAuth = () => {
     const context = useContext(AuthContext)
-    if(!context){
+    if (!context) {
         throw new Error('useAuth must be used within an AuthProvider')
     }
     return context

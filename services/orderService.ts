@@ -204,12 +204,34 @@ export const addItemsToOrderApi = async (tenantSlug: string, orderId: string | n
     return response.data
 }
 
-export const updateOrderStatusApi = async (tenantSlug: string, orderId: string | number, status: OrderStatus) => {
-    const response = await api.put(`/public/${tenantSlug}/order/${orderId}/status`, { status });
+export const updateOrderItemQtyApi = async (tenantSlug: string, orderId: string | number, itemId: string | number, quantity: number) => {
+    const response = await api.put(`/public/${tenantSlug}/order/${orderId}/items/${itemId}`, { quantity });
     return response.data
 }
 
-export const updatePaymentStatusApi = async (tenantSlug: string, orderId: string | number, payload: UpdatePaymentStatusPayload) => {
-    const response = await api.put(`/public/${tenantSlug}/order/${orderId}/paymentStatus`, payload);
+export const deleteOrderItemApi = async (tenantSlug: string, orderId: string | number, itemId: string | number) => {
+    const response = await api.delete(`/public/${tenantSlug}/order/${orderId}/items/${itemId}`)
+    return response.data
+}
+
+export const updateOrderStatusApi = async (tenantSlug: string, orderId: string | number, status: OrderStatus) => {
+    const response = await api.put(`/public/${tenantSlug}/order/${orderId}/status`, null, {
+        params: { status }
+    });
     return response.data;
 }
+
+export const updatePaymentStatusApi = async (tenantSlug: string, orderId: string | number, payload: UpdatePaymentStatusPayload) => {
+    const params: Record<string, any> = {
+        paymentStatus: payload.paymentStatus,
+    };
+    if (payload.paymentMethod) {
+        params.paymentMethod = payload.paymentMethod;
+    }
+    if (payload.manualDiscount !== undefined && payload.manualDiscount !== null) {
+        params.manualDiscount = payload.manualDiscount;
+    }
+    const response = await api.put(`/public/${tenantSlug}/order/${orderId}/paymentStatus`, null, { params });
+    return response.data;
+}
+
