@@ -1,7 +1,7 @@
-import { UIItem } from "@/app/hooks/useTableOrdering";
 import { Image } from "expo-image";
 import React from "react";
 import { Dimensions, StyleSheet, TouchableOpacity, View } from "react-native";
+import { UIItem } from "../../hooks/useTableOrdering";
 import Text from "../AppText";
 
 const { width } = Dimensions.get("window")

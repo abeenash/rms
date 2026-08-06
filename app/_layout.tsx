@@ -6,55 +6,77 @@ import {
 } from "@expo-google-fonts/dm-sans"
 import { Stack } from "expo-router"
 import * as SplashScreen from "expo-splash-screen"
-import { useEffect } from "react"
-import { OfflineBanner } from "./components/OfflineBanner"
-import { AlertProvider } from "./context/AlertContext"
-import { AuthProvider } from "./context/AuthContext"
-import { ThemeProvider } from "./context/ThemeContext"
+import { useEffect, useState } from "react"
+import { OfflineBanner } from "../components/OfflineBanner"
+import { SplashScreenOverlay } from "../components/SplashScreenOverlay"
+import { AlertProvider } from "../context/AlertContext"
+import { AuthProvider, useAuth } from "../context/AuthContext"
+import { ThemeProvider } from "../context/ThemeContext"
+import { TanStackProvider } from "../providers/TanStackProvider"
 
 
 SplashScreen.preventAutoHideAsync()
 
-export default function RootLayout() {
+function RootLayoutInner() {
   const [fontsLoaded, fontError] = useFonts({
     "Inter-Regular": DMSans_400Regular,
     "Inter-Semibold": DMSans_600SemiBold,
     "Inter-Bold": DMSans_700Bold
   });
 
+  const { isLoading: authLoading } = useAuth();
+  const [overlayDismissed, setOverlayDismissed] = useState(false);
+
+  const fontsReady = fontsLoaded || fontError;
+  const isReady = fontsReady && !authLoading && overlayDismissed;
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if (fontsReady) {
       SplashScreen.hideAsync()
     }
-  }, [fontsLoaded, fontError])
+  }, [fontsReady])
 
-
-  if (!fontsLoaded && !fontError) {
+  if (!fontsReady) {
     return null;
   }
 
   return (
-      <AuthProvider>
+    <>
+      {!overlayDismissed && (
+        <SplashScreenOverlay
+          isReady={!authLoading}
+          onAnimationComplete={() => setOverlayDismissed(true)}
+        />
+      )}
+      <OfflineBanner />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          headerStyle: {
+            backgroundColor: '#ababab'
+          },
+          headerTintColor: "#fff",
+          headerTitleStyle: {
+            fontSize: 20,
+            fontFamily: "Inter-Bold",
+          },
+        }}>
+        <Stack.Screen name="index" options={{ title: "Login", headerShown: false }} />
+      </Stack>
+    </>
+  )
+}
+
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <TanStackProvider>
         <ThemeProvider>
           <AlertProvider>
-            <OfflineBanner />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                headerStyle: {
-                  backgroundColor: '#ababab'
-                },
-                headerTintColor: "#fff",
-                headerTitleStyle: {
-                  fontSize: 20,
-                  fontFamily: "Inter-Bold",
-                },
-              }}>
-              <Stack.Screen name="index" options={{ title: "Login", headerShown: false }} />
-            </Stack>
+            <RootLayoutInner />
           </AlertProvider>
         </ThemeProvider>
-      </AuthProvider>
+      </TanStackProvider>
+    </AuthProvider>
   )
 }

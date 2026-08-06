@@ -1,13 +1,13 @@
 import React from "react"
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import Text from "../components/AppText"
-import { CartDrawer } from "../components/tables/CartDrawer"
-import { CategorySearch } from "../components/tables/CategorySearch"
-import { ProductCard } from "../components/tables/ProductCard"
-import { TableHeader } from "../components/tables/TableHeader"
-import { useTheme } from "../context/ThemeContext"
-import { useTableOrdering } from "../hooks/useTableOrdering"
+import Text from "../../components/AppText"
+import { CartDrawer } from "../../components/tables/CartDrawer"
+import { CategorySearch } from "../../components/tables/CategorySearch"
+import { ProductCard } from "../../components/tables/ProductCard"
+import { TableHeader } from "../../components/tables/TableHeader"
+import { useTheme } from "../../context/ThemeContext"
+import { useTableOrdering } from "../../hooks/useTableOrdering"
 
 export default function TableOrderingScreen() {
     const insets = useSafeAreaInsets()

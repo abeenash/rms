@@ -1,7 +1,7 @@
-import { CartItem, ExistingItem, UIItem } from "@/app/hooks/useTableOrdering";
 import { Maximize2, Minimize2, Minus, Plus, ShoppingBag, X } from "lucide-react-native";
 import React from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { CartItem, ExistingItem, UIItem } from "../../hooks/useTableOrdering";
 import Text from "../AppText";
 
 interface CartDrawerProps{

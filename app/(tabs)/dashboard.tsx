@@ -22,10 +22,10 @@ import Animated, {
 } from "react-native-reanimated"
 
 import { DiningTable, fetchDiningTablesApi } from "@/services/tableService"
-import Text from "../components/AppText"
-import { useCustomAlert } from "../context/AlertContext"
-import { useAuth } from "../context/AuthContext"
-import { useTheme } from "../context/ThemeContext"
+import Text from "../../components/AppText"
+import { useCustomAlert } from "../../context/AlertContext"
+import { useAuth } from "../../context/AuthContext"
+import { useTheme } from "../../context/ThemeContext"
 
 const { width } = Dimensions.get("window")
 const CARD_WIDTH = (width - 48) / 2

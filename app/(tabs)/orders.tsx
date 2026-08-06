@@ -16,11 +16,11 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useFocusEffect, useRouter } from "expo-router";
-import Text from "../components/AppText";
-import { useTheme } from "../context/ThemeContext";
+import Text from "../../components/AppText";
+import { useTheme } from "../../context/ThemeContext";
 
 import { Order, fetchOrdersApi } from "@/services/orderService";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 export default function OrdersScreen() {
   const insets = useSafeAreaInsets();

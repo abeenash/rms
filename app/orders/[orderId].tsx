@@ -1,16 +1,16 @@
 import React from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Text from "../components/AppText";
-import { CatalogAccordion } from "../components/orders/CatalogAccordion";
-import { InvoiceModal } from "../components/orders/InvoiceModal";
-import { OrderBottomBar } from "../components/orders/OrderBottomBar";
-import { OrderDetailsHeader } from "../components/orders/OrderDetailsHeader";
-import { OrderItemsList } from "../components/orders/OrderItemsList";
-import { OrderStatusCard } from "../components/orders/OrderStatusCard";
-import { OrderSummaryCard } from "../components/orders/OrderSummaryCard";
-import { PaymentQRModal } from "../components/orders/PaymentQRModal";
-import { useOrderDetails } from "../hooks/useOrderDetails";
+import Text from "../../components/AppText";
+import { CatalogAccordion } from "../../components/orders/CatalogAccordion";
+import { InvoiceModal } from "../../components/orders/InvoiceModal";
+import { OrderBottomBar } from "../../components/orders/OrderBottomBar";
+import { OrderDetailsHeader } from "../../components/orders/OrderDetailsHeader";
+import { OrderItemsList } from "../../components/orders/OrderItemsList";
+import { OrderStatusCard } from "../../components/orders/OrderStatusCard";
+import { OrderSummaryCard } from "../../components/orders/OrderSummaryCard";
+import { PaymentQRModal } from "../../components/orders/PaymentQRModal";
+import { useOrderDetails } from "../../hooks/useOrderDetails";
 
 export default function OrderDetailsScreen() {
     const insets = useSafeAreaInsets();

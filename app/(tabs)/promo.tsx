@@ -5,9 +5,9 @@ import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } fr
 
 import { fetchPromoCodesApi, PromoCode } from "@/services/promoService"
 import { useFocusEffect } from "expo-router"
-import Text from "../components/AppText"
-import { useAuth } from "../context/AuthContext"
-import { useTheme } from "../context/ThemeContext"
+import Text from "../../components/AppText"
+import { useAuth } from "../../context/AuthContext"
+import { useTheme } from "../../context/ThemeContext"
 
 export default function PromoScreen() {
   const { isDark } = useTheme()
