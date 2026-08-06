@@ -1,13 +1,13 @@
 import React from "react"
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import Text from "../components/AppText"
-import { CartDrawer } from "../components/tables/CartDrawer"
-import { CategorySearch } from "../components/tables/CategorySearch"
-import { ProductCard } from "../components/tables/ProductCard"
-import { TableHeader } from "../components/tables/TableHeader"
-import { useTheme } from "../context/ThemeContext"
-import { useTableOrdering } from "../hooks/useTableOrdering"
+import Text from "../../components/AppText"
+import { CartDrawer } from "../../components/tables/CartDrawer"
+import { CategorySearch } from "../../components/tables/CategorySearch"
+import { ProductCard } from "../../components/tables/ProductCard"
+import { TableHeader } from "../../components/tables/TableHeader"
+import { useTheme } from "../../context/ThemeContext"
+import { useTableOrdering } from "../../hooks/useTableOrdering"
 
 export default function TableOrderingScreen() {
     const insets = useSafeAreaInsets()
@@ -18,7 +18,6 @@ export default function TableOrderingScreen() {
         capacity,
         isDirect,
         isOccupied,
-        router,
         search,
         setSearch,
         selectedCategory,
@@ -45,7 +44,10 @@ export default function TableOrderingScreen() {
         updateExistingQty,
         removeExistingItem,
         loadMoreItems,
-        handleConfirmOrder, } = useTableOrdering()
+        handleConfirmOrder,
+        handleBackNavigation,
+
+    } = useTableOrdering()
 
     const colors = {
         bg: isDark ? "#0F172A" : "#F8FAFC",
@@ -85,7 +87,7 @@ export default function TableOrderingScreen() {
                 capacity={capacity}
                 isOccupied={isOccupied}
                 insetsTop={insets.top}
-                onBack={() => router.back()}
+                onBack={handleBackNavigation}
                 colors={colors}
             />
 

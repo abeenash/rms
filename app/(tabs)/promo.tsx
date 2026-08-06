@@ -4,9 +4,10 @@ import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from "
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated"
 
 import { fetchPromoCodesApi, PromoCode } from "@/services/promoService"
-import Text from "../components/AppText"
-import { useAuth } from "../context/AuthContext"
-import { useTheme } from "../context/ThemeContext"
+import { useFocusEffect } from "expo-router"
+import Text from "../../components/AppText"
+import { useAuth } from "../../context/AuthContext"
+import { useTheme } from "../../context/ThemeContext"
 
 export default function PromoScreen() {
   const { isDark } = useTheme()
@@ -18,11 +19,13 @@ export default function PromoScreen() {
 
   const pulseOpacity = useSharedValue(0.4)
 
-  const loadPromos = useCallback(async () => {
+  const loadPromos = useCallback(async (showLoader = true) => {
     if (!tenantSlug) return
     try {
-      setLoading(true)
-      pulseOpacity.value = withRepeat(withTiming(1, { duration: 800 }), -1, true)
+      if (showLoader) {
+        setLoading(true)
+        pulseOpacity.value = withRepeat(withTiming(1, { duration: 800 }), -1, true)
+      }
       const data = await fetchPromoCodesApi(tenantSlug)
       setPromos(data)
     } catch (error) {
@@ -36,6 +39,12 @@ export default function PromoScreen() {
   useEffect(() => {
     loadPromos()
   }, [loadPromos])
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPromos(false)
+    }, [loadPromos])
+  )
 
   const onRefresh = () => {
     setRefreshing(true)

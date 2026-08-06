@@ -1,7 +1,7 @@
-import { CartItem, ExistingItem, UIItem } from "@/app/hooks/useTableOrdering";
 import { Maximize2, Minimize2, Minus, Plus, ShoppingBag, X } from "lucide-react-native";
 import React from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { CartItem, ExistingItem, UIItem } from "../../hooks/useTableOrdering";
 import Text from "../AppText";
 
 interface CartDrawerProps{
@@ -132,8 +132,8 @@ isExpanded,
                                                         <Plus size={14} color="#FFF" />
                                                     </TouchableOpacity>
                                                 </View>
-                                                <TouchableOpacity onPress={() => onRemoveExistingItem(item.id, item.name)} style={[styles.deleteActionButton, { backgroundColor: '#FEE2E2' }]}>
-                                                    <X size={14} color={colors.accentRed} />
+                                                <TouchableOpacity onPress={() => onRemoveExistingItem(item.id, item.name)} style={styles.deleteActionButton}>
+                                                    <X size={18} color={colors.accentRed} />
                                                 </TouchableOpacity>
                                             </View>
                                         </View>

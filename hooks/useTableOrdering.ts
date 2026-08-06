@@ -1,9 +1,9 @@
-import { fetchMenuItemsApi, fetchMenusApi } from "@/services/menuService";
-import { addItemsToOrderApi, AddOrderItemsPayload, createOrderApi, CreateOrderPayload, createTableOrderApi, CreateTableOrderPayload, fetchActiveOrderByTableIdApi, fetchOrderByIdApi, generateIdempotencyKey } from "@/services/orderService";
+import { addItemsToOrderApi, AddOrderItemsPayload, createOrderApi, CreateOrderPayload, createTableOrderApi, CreateTableOrderPayload, deleteOrderItemApi, fetchActiveOrderByTableIdApi, fetchOrderByIdApi, generateIdempotencyKey, updateOrderItemQtyApi } from "@/services/orderService";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCustomAlert } from "../context/AlertContext";
 import { useAuth } from "../context/AuthContext";
+import { useFlattenedMenuItems, useMenuCategories } from "./useMenuCatalog";
 
 export interface UIItem {
     id: string;
@@ -51,20 +51,20 @@ export function useTableOrdering() {
     //ui and control states
     const [search, setSearch] = useState("")
     const [selectedCategory, setSelectedCategory] = useState("All")
-    const [categories, setCategories] = useState<string[]>(["All"])
-    const [menuItems, setMenuItems] = useState<UIItem[]>([])
+    // const [categories, setCategories] = useState<string[]>(["All"])
+    // const [menuItems, setMenuItems] = useState<UIItem[]>([])
 
     //loaders
-    const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
+    // const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
     const [isSearchLoading, setIsSearchLoading] = useState<boolean>(false)
     const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false)
     const [isLoadingExistingOrder, setIsLoadingExistingOrder] = useState<boolean>(false)
 
     //for pagination and infinite scroll state
-    const [page, setPage] = useState<number>(0)
-    const [hasMore, setHasMore] = useState<boolean>(true)
+    // const [page, setPage] = useState<number>(0)
+    // const [hasMore, setHasMore] = useState<boolean>(true)
     const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
-    const isInitialMount = useRef<boolean>(true)
+    // const isInitialMount = useRef<boolean>(true)
 
     //for orders and cart
     const [cart, setCart] = useState<CartState>({})
@@ -73,6 +73,10 @@ export function useTableOrdering() {
     const [activeOrderId, setActiveOrderId] = useState<string | number | null>(currentOrderId || null) //isolating the db 
     const [activeOrderNumber, setActiveOrderNumber] = useState<string>(currentOrderId || "")
 
+    //modification tracking for back action feedback
+    const [modifiedItemNames, setModifiedItemNames] = useState<Set<string>>(new Set())
+
+    const targetOrderId = currentOrderId || activeOrderId
     const displayOrderNumber = activeOrderNumber || currentOrderId
 
     //to fetch the running order for occupied tables
@@ -100,100 +104,108 @@ export function useTableOrdering() {
                 setExistingOrderItems([])
             }
         }
-
         loadExistingOrder()
     }, [isOccupied, currentOrderId, tenantSlug])
 
     //loading the screen (initializing the menu)
-    useEffect(() => {
-        const loadInitialData = async () => {
-            if (!tenantSlug) return
+    // useEffect(() => {
+    //     const loadInitialData = async () => {
+    //         if (!tenantSlug) return
 
-            try {
-                setIsInitialLoading(true)
+    //         try {
+    //             setIsInitialLoading(true)
+    //             const [rawMenus, rawItems] = await Promise.all([
+    //                 fetchMenusApi(tenantSlug),
+    //                 fetchMenuItemsApi(tenantSlug, 0, 10, "")
+    //             ])
 
-                const [rawMenus, rawItems] = await Promise.all([
-                    fetchMenusApi(tenantSlug),
-                    fetchMenuItemsApi(tenantSlug, 0, 10, "")
-                ])
+    //             const categoryNames = rawMenus.filter((m) => m.active).map((m) => m.menuName)
+    //             setCategories(["All", ...new Set(categoryNames)])
 
-                const categoryNames = rawMenus
-                    .filter((m) => m.active)
-                    .map((m) => m.menuName)
+    //             const itemsList = rawItems?.content || []
+    //             const formattedItems: UIItem[] = itemsList
+    //                 .filter((item) => item.active)
+    //                 .map((item) => ({
+    //                     id: String(item.id),
+    //                     name: item.name,
+    //                     price: item.price,
+    //                     category: item.menuName,
+    //                     description: item.description || "",
+    //                     image: item.imageUrl
+    //                 }))
 
-                setCategories(["All", ...new Set(categoryNames)])
+    //             setMenuItems(formattedItems)
+    //             setPage(0)
+    //             const isLast = rawItems.lastPage ?? rawItems.last ?? (1 >= rawItems.totalPages)
+    //             setHasMore(!isLast && itemsList.length > 0)
+    //         } catch (error) {
+    //             console.error("Failed to load initial menu data:", error)
+    //         } finally {
+    //             setIsInitialLoading(false)
+    //         }
+    //     }
+    //     loadInitialData()
+    // }, [tenantSlug])
 
-                const itemsList = rawItems?.content || []
-                const formattedItems: UIItem[] = itemsList
-                    .filter((item) => item.active)
-                    .map((item) => ({
-                        id: String(item.id),
-                        name: item.name,
-                        price: item.price,
-                        category: item.menuName,
-                        description: item.description || "",
-                        image: item.imageUrl
-                    }))
+    const { flatItems, isLoading: isCatalogLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useFlattenedMenuItems(tenantSlug);
+    const categoriesQuery = useMenuCategories(tenantSlug)
 
-                setMenuItems(formattedItems)
-                setPage(0)
+    const categories = useMemo(() => {
+        const names = (categoriesQuery.data || []).filter((m) => m.active).map((m) => m.menuName)
+        return ["All", ...new Set(names)]
+    }, [categoriesQuery.data])
 
-                const isLast = rawItems.lastPage ?? rawItems.last ?? (1 >= rawItems.totalPages)
-                setHasMore(!isLast && itemsList.length > 0)
-            } catch (error) {
-                console.error("Failed to load initial menu data:", error)
-            } finally {
-                setIsInitialLoading(false)
-            }
+    const isInitialLoading = isCatalogLoading
+
+    const loadMoreItems = useCallback(async()=>{
+        if(hasNextPage && !isFetchingNextPage){
+            await fetchNextPage()
         }
+    },[hasNextPage, isFetchingNextPage, fetchNextPage])
 
-        loadInitialData()
-    }, [tenantSlug])
+    const filteredMenuItems = useMemo(()=>{
+        return flatItems.filter((item)=> selectedCategory === "All" || item.category === selectedCategory)
+    },[flatItems, selectedCategory])
 
     //debounce effect for the search
-    useEffect(() => {
-        if (isInitialMount.current) {
-            isInitialMount.current = false
-            return
-        }
+    // useEffect(() => {
+    //     if (isInitialMount.current) {
+    //         isInitialMount.current = false
+    //         return
+    //     }
 
-        setIsSearchLoading(true)
+    //     setIsSearchLoading(true)
 
-        const timer = setTimeout(async () => {
-            if (!tenantSlug) {
-                setIsSearchLoading(false)
-                return
-            }
-
-            try {
-                const rawItems = await fetchMenuItemsApi(tenantSlug, 0, 10, search)
-                const itemsList = rawItems?.content || []
-
-                const formattedItems: UIItem[] = itemsList
-                    .filter((item) => item.active)
-                    .map((item) => ({
-                        id: String(item.id),
-                        name: item.name,
-                        price: item.price,
-                        category: item.menuName,
-                        description: item.description || "",
-                        image: item.imageUrl
-                    }))
-
-                setMenuItems(formattedItems)
-                setPage(0)
-
-                const isLast = rawItems.lastPage ?? rawItems.last ?? (1 >= rawItems.totalPages)
-                setHasMore(!isLast && itemsList.length > 0)
-            } catch (error) {
-                console.error("Failed to search menu items:", error)
-            } finally {
-                setIsSearchLoading(false)
-            }
-        }, 400)
-
-        return () => clearTimeout(timer)
-    }, [search, tenantSlug])
+    //     const timer = setTimeout(async () => {
+    //         if (!tenantSlug) {
+    //             setIsSearchLoading(false)
+    //             return
+    //         }
+    //         try {
+    //             const rawItems = await fetchMenuItemsApi(tenantSlug, 0, 10, search)
+    //             const itemsList = rawItems?.content || []
+    //             const formattedItems: UIItem[] = itemsList
+    //                 .filter((item) => item.active)
+    //                 .map((item) => ({
+    //                     id: String(item.id),
+    //                     name: item.name,
+    //                     price: item.price,
+    //                     category: item.menuName,
+    //                     description: item.description || "",
+    //                     image: item.imageUrl
+    //                 }))
+    //             setMenuItems(formattedItems)
+    //             setPage(0)
+    //             const isLast = rawItems.lastPage ?? rawItems.last ?? (1 >= rawItems.totalPages)
+    //             setHasMore(!isLast && itemsList.length > 0)
+    //         } catch (error) {
+    //             console.error("Failed to search menu items:", error)
+    //         } finally {
+    //             setIsSearchLoading(false)
+    //         }
+    //     }, 400)
+    //     return () => clearTimeout(timer)
+    // }, [search, tenantSlug])
 
     //active order search by tableId
     useEffect(() => {
@@ -204,12 +216,9 @@ export function useTableOrdering() {
                 setActiveOrderId(null)
                 return
             }
-
             try {
                 setIsLoadingExistingOrder(true)
-
                 const response = await fetchActiveOrderByTableIdApi(tenantSlug, tableId)
-
                 if (response?.success && response?.data) {
                     const orderData = response.data
 
@@ -248,42 +257,42 @@ export function useTableOrdering() {
     }, [tenantSlug, tableId, isDirect])
 
     //infinite pagination
-    const loadMoreItems = useCallback(async () => {
-        if (!hasMore || isLoadingMore || isInitialLoading || isSearchLoading || !tenantSlug) return
+    // const loadMoreItems = useCallback(async () => {
+    //     if (!hasMore || isLoadingMore || isInitialLoading || isSearchLoading || !tenantSlug) return
 
-        try {
-            setIsLoadingMore(true)
-            const nextPage = page + 1
-            const rawItems = await fetchMenuItemsApi(tenantSlug, nextPage, 10, search)
-            const itemsList = rawItems?.content || []
+    //     try {
+    //         setIsLoadingMore(true)
+    //         const nextPage = page + 1
+    //         const rawItems = await fetchMenuItemsApi(tenantSlug, nextPage, 10, search)
+    //         const itemsList = rawItems?.content || []
 
-            const newFormatted: UIItem[] = itemsList
-                .filter((item) => item.active)
-                .map((item) => ({
-                    id: String(item.id),
-                    name: item.name,
-                    price: item.price,
-                    category: item.menuName,
-                    description: item.description || "",
-                    image: item.imageUrl
-                }))
+    //         const newFormatted: UIItem[] = itemsList
+    //             .filter((item) => item.active)
+    //             .map((item) => ({
+    //                 id: String(item.id),
+    //                 name: item.name,
+    //                 price: item.price,
+    //                 category: item.menuName,
+    //                 description: item.description || "",
+    //                 image: item.imageUrl
+    //             }))
 
-            setMenuItems((prev) => {
-                const existingIds = new Set(prev.map((p) => p.id))
-                const uniqueNewItems = newFormatted.filter((p) => !existingIds.has(p.id))
-                return [...prev, ...uniqueNewItems]
-            })
+    //         setMenuItems((prev) => {
+    //             const existingIds = new Set(prev.map((p) => p.id))
+    //             const uniqueNewItems = newFormatted.filter((p) => !existingIds.has(p.id))
+    //             return [...prev, ...uniqueNewItems]
+    //         })
 
-            setPage(nextPage)
+    //         setPage(nextPage)
 
-            const isLast = rawItems.lastPage ?? rawItems.last ?? (nextPage + 1 >= rawItems.totalPages)
-            setHasMore(!isLast && itemsList.length > 0)
-        } catch (error) {
-            console.error("Failed to load more menu items:", error)
-        } finally {
-            setIsLoadingMore(false)
-        }
-    }, [hasMore, isLoadingMore, isInitialLoading, isSearchLoading, tenantSlug, page, search])
+    //         const isLast = rawItems.lastPage ?? rawItems.last ?? (nextPage + 1 >= rawItems.totalPages)
+    //         setHasMore(!isLast && itemsList.length > 0)
+    //     } catch (error) {
+    //         console.error("Failed to load more menu items:", error)
+    //     } finally {
+    //         setIsLoadingMore(false)
+    //     }
+    // }, [hasMore, isLoadingMore, isInitialLoading, isSearchLoading, tenantSlug, page, search])
 
     //the cart actions [addToCart, removeFromCart, updateExistingQty, removeExistingItem]
     const addToCart = useCallback((itemToAdd: UIItem) => {
@@ -314,39 +323,95 @@ export function useTableOrdering() {
         })
     }, [])
 
-    const updateExistingQty = useCallback((id: string, delta: number) => {
-        setExistingOrderItems(prev => prev.map(item => {
-            if (item.id === id) {
-                const newQty = item.quantity + delta
-                return newQty > 0 ? { ...item, quantity: newQty } : item
+    const updateExistingQty = useCallback(async (itemId: string | number, delta: number) => {
+        if (!tenantSlug || !targetOrderId) return
+
+        let targetItemName = ""
+        let targetNewQty = 0
+        let originalItem: ExistingItem | undefined
+        const stringId = String(itemId)
+
+        setExistingOrderItems((prev) => prev.map((item) => {
+            if (item.id === stringId) {
+                originalItem = item
+                targetItemName = item.name
+                targetNewQty = Math.max(1, item.quantity + delta)
+                return { ...item, quantity: targetNewQty }
             }
             return item
         }))
-    }, [])
 
-    const removeExistingItem = useCallback((id: string, name: string) => {
+        if (!originalItem || targetNewQty === originalItem.quantity) return
+
+        try {
+            await updateOrderItemQtyApi(tenantSlug, targetOrderId, stringId, targetNewQty)
+            setModifiedItemNames((prev) => new Set(prev).add(targetItemName))
+        } catch (error: any) {
+            console.error("Failed to update item quantity:", error)
+
+            //rollback ui state on failure
+            setExistingOrderItems((prev) => prev.map((item) => (
+                item.id === stringId && originalItem ? originalItem : item
+            )))
+            showAlert("Update Failed", "Could not update item quantity on the server")
+        }
+    }, [tenantSlug, targetOrderId, showAlert])
+
+    const removeExistingItem = useCallback(async (itemId: string | number, name: string) => {
+        if (!tenantSlug || !targetOrderId) return
+
         showAlert(
             "⚠️ Remove Item",
-            `Remove "${name}" from the order?`,
+            `Remove "${name}" from Order #${displayOrderNumber}?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
                     text: "Remove",
                     style: "destructive",
-                    onPress: () => setExistingOrderItems(prev => prev.filter(item => item.id !== id))
+                    onPress: async () => {
+                        let originalList: ExistingItem[] = []
+                        setExistingOrderItems((prev) => {
+                            originalList = prev
+                            return prev.filter(item => item.id !== itemId)
+                        })
+
+                        try {
+                            await deleteOrderItemApi(tenantSlug, targetOrderId, itemId)
+                            setModifiedItemNames((prev) => new Set(prev).add(name))
+                        } catch (error: any) {
+                            console.error("Failed to delete item:", error)
+                            setExistingOrderItems(originalList)
+                            showAlert("Deletion Failed", `Could not remove ${name} from the server.`)
+                        }
+                    }
                 }
             ],
         )
-    }, [showAlert])
+    }, [tenantSlug, targetOrderId, displayOrderNumber, showAlert])
+
+    //back navigation action with live sync summary feedback
+    const handleBackNavigation = useCallback(() => {
+        if (modifiedItemNames.size > 0) {
+            const itemListStr = Array.from(modifiedItemNames).join(", ")
+            showAlert(
+                "Order Updated",
+                `Live adjustments for ["${itemListStr}"] were synced directly with the order.`,
+                [{ text: "OK", onPress: () => router.back() }]
+            )
+        } else {
+            router.back()
+        }
+    }, [modifiedItemNames, router, showAlert])
 
     //computations [filtering, total, grandtotal, activeordercount]
-    const filteredMenuItems = menuItems.filter((item) => selectedCategory === "All" || item.category === selectedCategory)
+    // const filteredMenuItems = menuItems.filter((item) => selectedCategory === "All" || item.category === selectedCategory)
     const cartItemsArray = Object.values(cart)
     const newItemsSubtotal = cartItemsArray.reduce((sum, entry) => sum + (entry.item.price * entry.quantity), 0)
     const totalCartCount = cartItemsArray.reduce((prevQty, entry) => prevQty + entry.quantity, 0)
-    const existingOrderSubtotal = existingOrderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+    const safeExistingOrderItems = existingOrderItems || []
+    const existingOrderSubtotal = safeExistingOrderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
     const grandTotal = existingOrderSubtotal + newItemsSubtotal
-    const hasActiveOrders = existingOrderItems.length > 0 || totalCartCount > 0
+    const hasActiveOrders = safeExistingOrderItems.length > 0 || totalCartCount > 0
 
     //if drawer state empty, then auto-collapse
     useEffect(() => {
@@ -369,7 +434,7 @@ export function useTableOrdering() {
 
         const targetOrderId = currentOrderId || activeOrderId;
 
-        const isExistingOrder = (isOccupied || Boolean(targetOrderId) || existingOrderItems.length > 0) && !isDirect
+        const isExistingOrder = (isOccupied || Boolean(targetOrderId) || safeExistingOrderItems.length > 0) && !isDirect
 
         const formattedItems = cartItemsArray.map((cartEntry) => {
             const parseId = Number(cartEntry.item.id)
@@ -471,7 +536,7 @@ export function useTableOrdering() {
 
     return {
         //navigation and identifiers
-        displayTableNumber, displayOrderNumber, capacity, isDirect, isOccupied, router,
+        displayTableNumber, displayOrderNumber, capacity, isDirect, isOccupied, handleBackNavigation,
 
         //data and filters
         search, setSearch, selectedCategory, setSelectedCategory, categories, filteredMenuItems,
@@ -483,7 +548,7 @@ export function useTableOrdering() {
         newItemsSubtotal, existingOrderSubtotal, grandTotal, totalCartCount, hasActiveOrders,
 
         //UI states
-        isExpanded, setIsExpanded, isInitialLoading, setIsInitialLoading, isSearchLoading, isLoadingMore, isLoadingExistingOrder, isSubmittingOrder,
+        isExpanded, setIsExpanded, isInitialLoading, isSearchLoading, isLoadingMore, isLoadingExistingOrder, isSubmittingOrder,
 
         //handlers
         addToCart, removeFromCart, updateExistingQty, removeExistingItem, loadMoreItems, handleConfirmOrder,

@@ -10,7 +10,7 @@ import {
   View
 } from "react-native";
 
-import Text from "./components/AppText";
+import Text from "../components/AppText";
 
 import { useRouter } from "expo-router";
 import { Eye, EyeOff, LogIn, Moon, Sun } from "lucide-react-native";
@@ -21,9 +21,9 @@ import Animated, {
   withDelay,
   withTiming
 } from "react-native-reanimated";
-import { useCustomAlert } from "./context/AlertContext";
-import { useAuth } from "./context/AuthContext";
-import { useTheme } from "./context/ThemeContext";
+import { useCustomAlert } from "../context/AlertContext";
+import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 
 const LoginScreen = () => {
   const [email, setEmail] = useState("")
@@ -49,7 +49,7 @@ const LoginScreen = () => {
       router.replace("/dashboard");
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || error.message || "Invalid Details";
-      showAlert("LOGIN FAILED!", errorMessage);
+      showAlert("LOGIN FAILED!", "Please check your email or password");
     } finally {
       setIsLoading(false);
     }
