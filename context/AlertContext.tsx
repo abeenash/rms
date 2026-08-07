@@ -20,10 +20,11 @@ export interface AlertOptions {
     title: string
     message?: string
     buttons?: AlertButton[]
+    cancelable?: boolean
 }
 
 interface AlertContextType {
-    showAlert: (title: string, message?: string, buttons?: AlertButton[]) => void
+    showAlert: (title: string, message?: string, buttons?: AlertButton[], options?: { cancelable?: boolean }) => void
     hideAlert: () => void
 }
 
@@ -48,11 +49,12 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         destructiveBtnBg: "#DC2626",
     }
 
-    const showAlert = (title: string, message?: string, buttons?: AlertButton[]) => {
+    const showAlert = (title: string, message?: string, buttons?: AlertButton[], options?: { cancelable?: boolean }) => {
         setConfig({
             title,
             message,
             buttons: buttons && buttons.length > 0 ? buttons : [{ text: "OK", style: "default" }],
+            cancelable: options?.cancelable ?? false,
         })
         setVisible(true)
     }
@@ -78,67 +80,111 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 animationType="fade"
                 onRequestClose={hideAlert}
             >
-                <TouchableWithoutFeedback onPress={hideAlert}>
-                    <View style={[styles.overlay, { backgroundColor: colors.overlayBg }]}>
-                        <TouchableWithoutFeedback>
-                            <View style={[styles.alertCard, { backgroundColor: colors.cardBg }]}>
-                                {/* Header / Title */}
-                                <Text style={[styles.title, { color: colors.titleText }]}>
-                                    {config.title}
-                                </Text>
-
-                                {/* Message */}
-                                {!!config.message && (
-                                    <Text style={[styles.message, { color: colors.messageText }]}>
-                                        {config.message}
+                {config.cancelable ? (
+                    <TouchableWithoutFeedback onPress={hideAlert}>
+                        <View style={[styles.overlay, { backgroundColor: colors.overlayBg }]}>
+                            <TouchableWithoutFeedback>
+                                <View style={[styles.alertCard, { backgroundColor: colors.cardBg }]}>
+                                    <Text style={[styles.title, { color: colors.titleText }]}>
+                                        {config.title}
                                     </Text>
-                                )}
-
-                                {/* Action Buttons */}
-                                <View
-                                    style={[
-                                        styles.buttonContainer,
-                                        config.buttons && config.buttons.length > 2
-                                            ? { flexDirection: "column" }
-                                            : { flexDirection: "row" },
-                                    ]}
-                                >
-                                    {config.buttons?.map((btn, index) => {
-                                        const isDestructive = btn.style === "destructive"
-                                        const isCancel = btn.style === "cancel"
-
-                                        let btnBg = colors.primaryBtnBg
-                                        let textColor = "#FFFFFF"
-
-                                        if (isDestructive) {
-                                            btnBg = colors.destructiveBtnBg
-                                        } else if (isCancel) {
-                                            btnBg = colors.cancelBtnBg
-                                            textColor = colors.cancelBtnText
-                                        }
-
-                                        return (
-                                            <TouchableOpacity
-                                                key={index}
-                                                activeOpacity={0.8}
-                                                onPress={() => handleButtonPress(btn)}
-                                                style={[
-                                                    styles.button,
-                                                    { backgroundColor: btnBg },
-                                                    config.buttons && config.buttons.length <= 2 && { flex: 1 },
-                                                ]}
-                                            >
-                                                <Text style={[styles.buttonText, { color: textColor }]}>
-                                                    {btn.text}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        )
-                                    })}
+                                    {!!config.message && (
+                                        <Text style={[styles.message, { color: colors.messageText }]}>
+                                            {config.message}
+                                        </Text>
+                                    )}
+                                    <View
+                                        style={[
+                                            styles.buttonContainer,
+                                            config.buttons && config.buttons.length > 2
+                                                ? { flexDirection: "column" }
+                                                : { flexDirection: "row" },
+                                        ]}
+                                    >
+                                        {config.buttons?.map((btn, index) => {
+                                            const isDestructive = btn.style === "destructive"
+                                            const isCancel = btn.style === "cancel"
+                                            let btnBg = colors.primaryBtnBg
+                                            let textColor = "#FFFFFF"
+                                            if (isDestructive) {
+                                                btnBg = colors.destructiveBtnBg
+                                            } else if (isCancel) {
+                                                btnBg = colors.cancelBtnBg
+                                                textColor = colors.cancelBtnText
+                                            }
+                                            return (
+                                                <TouchableOpacity
+                                                    key={index}
+                                                    activeOpacity={0.8}
+                                                    onPress={() => handleButtonPress(btn)}
+                                                    style={[
+                                                        styles.button,
+                                                        { backgroundColor: btnBg },
+                                                        config.buttons && config.buttons.length <= 2 && { flex: 1 },
+                                                    ]}
+                                                >
+                                                    <Text style={[styles.buttonText, { color: textColor }]}>
+                                                        {btn.text}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            )
+                                        })}
+                                    </View>
                                 </View>
+                            </TouchableWithoutFeedback>
+                        </View>
+                    </TouchableWithoutFeedback>
+                ) : (
+                    <View style={[styles.overlay, { backgroundColor: colors.overlayBg }]}>
+                        <View style={[styles.alertCard, { backgroundColor: colors.cardBg }]}>
+                            <Text style={[styles.title, { color: colors.titleText }]}>
+                                {config.title}
+                            </Text>
+                            {!!config.message && (
+                                <Text style={[styles.message, { color: colors.messageText }]}>
+                                    {config.message}
+                                </Text>
+                            )}
+                            <View
+                                style={[
+                                    styles.buttonContainer,
+                                    config.buttons && config.buttons.length > 2
+                                        ? { flexDirection: "column" }
+                                        : { flexDirection: "row" },
+                                ]}
+                            >
+                                {config.buttons?.map((btn, index) => {
+                                    const isDestructive = btn.style === "destructive"
+                                    const isCancel = btn.style === "cancel"
+                                    let btnBg = colors.primaryBtnBg
+                                    let textColor = "#FFFFFF"
+                                    if (isDestructive) {
+                                        btnBg = colors.destructiveBtnBg
+                                    } else if (isCancel) {
+                                        btnBg = colors.cancelBtnBg
+                                        textColor = colors.cancelBtnText
+                                    }
+                                    return (
+                                        <TouchableOpacity
+                                            key={index}
+                                            activeOpacity={0.8}
+                                            onPress={() => handleButtonPress(btn)}
+                                            style={[
+                                                styles.button,
+                                                { backgroundColor: btnBg },
+                                                config.buttons && config.buttons.length <= 2 && { flex: 1 },
+                                            ]}
+                                        >
+                                            <Text style={[styles.buttonText, { color: textColor }]}>
+                                                {btn.text}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    )
+                                })}
                             </View>
-                        </TouchableWithoutFeedback>
+                        </View>
                     </View>
-                </TouchableWithoutFeedback>
+                )}
             </Modal>
         </AlertContext.Provider>
     )

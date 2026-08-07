@@ -235,3 +235,8 @@ export const updatePaymentStatusApi = async (tenantSlug: string, orderId: string
     return response.data;
 }
 
+export const cancelOrderApi = async (tenantSlug: string, orderId: string | number): Promise<Order> => {
+    const response = await api.patch<SingleOrderApiResponse>(`/public/${tenantSlug}/order/${orderId}/cancel`)
+    return response.data.data;
+}
+

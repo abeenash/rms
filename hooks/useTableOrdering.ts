@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCustomAlert } from "../context/AlertContext";
 import { useAuth } from "../context/AuthContext";
-import { useFlattenedMenuItems, useMenuCategories } from "./useMenuCatalog";
+import { useCatalogItems, useMenuCategories, useMenuSearch } from "./useMenuCatalog";
 
 export interface UIItem {
     id: string;
@@ -56,14 +56,14 @@ export function useTableOrdering() {
 
     //loaders
     // const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
-    const [isSearchLoading, setIsSearchLoading] = useState<boolean>(false)
+    // const [isSearchLoading, setIsSearchLoading] = useState<boolean>(false)
     const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false)
     const [isLoadingExistingOrder, setIsLoadingExistingOrder] = useState<boolean>(false)
 
     //for pagination and infinite scroll state
     // const [page, setPage] = useState<number>(0)
     // const [hasMore, setHasMore] = useState<boolean>(true)
-    const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
+    // const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
     // const isInitialMount = useRef<boolean>(true)
 
     //for orders and cart
@@ -147,8 +147,9 @@ export function useTableOrdering() {
     //     loadInitialData()
     // }, [tenantSlug])
 
-    const { flatItems, isLoading: isCatalogLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useFlattenedMenuItems(tenantSlug);
+    const { catalogItems, isLoading: isCatalogLoading } = useCatalogItems(tenantSlug)
     const categoriesQuery = useMenuCategories(tenantSlug)
+    const {searchItems, isLoading: isSearchFetching} = useMenuSearch(tenantSlug, search)
 
     const categories = useMemo(() => {
         const names = (categoriesQuery.data || []).filter((m) => m.active).map((m) => m.menuName)
@@ -157,15 +158,17 @@ export function useTableOrdering() {
 
     const isInitialLoading = isCatalogLoading
 
-    const loadMoreItems = useCallback(async()=>{
-        if(hasNextPage && !isFetchingNextPage){
-            await fetchNextPage()
-        }
-    },[hasNextPage, isFetchingNextPage, fetchNextPage])
+    const isSearchActive = search.trim().length > 0
+    const isSearchLoading = isSearchActive && isSearchFetching
+
+    const sourceItems = isSearchActive ? searchItems : catalogItems
 
     const filteredMenuItems = useMemo(()=>{
-        return flatItems.filter((item)=> selectedCategory === "All" || item.category === selectedCategory)
-    },[flatItems, selectedCategory])
+        if(isSearchActive){
+            return sourceItems
+        }
+        return sourceItems.filter((item)=> selectedCategory === "All" || item.category === selectedCategory)
+    },[sourceItems,selectedCategory,isSearchActive])
 
     //debounce effect for the search
     // useEffect(() => {
@@ -548,9 +551,9 @@ export function useTableOrdering() {
         newItemsSubtotal, existingOrderSubtotal, grandTotal, totalCartCount, hasActiveOrders,
 
         //UI states
-        isExpanded, setIsExpanded, isInitialLoading, isSearchLoading, isLoadingMore, isLoadingExistingOrder, isSubmittingOrder,
+        isExpanded, setIsExpanded, isInitialLoading, isSearchLoading, isLoadingExistingOrder, isSubmittingOrder,
 
         //handlers
-        addToCart, removeFromCart, updateExistingQty, removeExistingItem, loadMoreItems, handleConfirmOrder,
+        addToCart, removeFromCart, updateExistingQty, removeExistingItem, handleConfirmOrder,
     }
 }

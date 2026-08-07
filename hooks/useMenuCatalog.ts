@@ -1,5 +1,5 @@
 import { fetchMenuItemsApi, fetchMenusApi } from "@/services/menuService";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { UIItem } from "./useTableOrdering";
 
@@ -22,47 +22,56 @@ export function useMenuCategories(tenantSlug: string | null) {
 
 //fetch menu items with pagination
 export function useMenuItems(tenantSlug: string | null) {
-    return useInfiniteQuery({
+    return useQuery({
         queryKey: menuKeys.items(tenantSlug || ""),
-        queryFn: ({ pageParam = 0 }) => fetchMenuItemsApi(tenantSlug!, pageParam, 10, ""),
-        initialPageParam: 0,
-        getNextPageParam: (lastPage, allPages) => {
-            const isLast = lastPage.lastPage ?? lastPage.last ?? (allPages.length >= lastPage.totalPages)
-            return isLast ? undefined : allPages.length;
-        },
+        queryFn: () => fetchMenuItemsApi(tenantSlug!, 0, 200, ""),
         enabled: !!tenantSlug,
         staleTime: 1000 * 60 * 10,
     })
 }
 
 //to flatten the paginated results into a single UIItem array
-export function useFlattenedMenuItems(tenantSlug: string | null) {
+export function useCatalogItems(tenantSlug: string | null) {
     const query = useMenuItems(tenantSlug)
 
     const items: UIItem[] = useMemo(() => {
         if (!query.data) return [];
-        return query.data.pages.flatMap((page) =>
-            (page.content || []).filter((item) => item.active)
-                .map((item) => ({
-                    id: String(item.id),
-                    name: item.name,
-                    price: item.price,
-                    category: item.menuName,
-                    description: item.description || "",
-                    image: item.imageUrl,
-                }))
-        )
+        return (query.data.content || [])
+            .filter((item) => item.active)
+            .map((item) => ({
+                id: String(item.id),
+                name: item.name,
+                price: item.price,
+                category: item.menuName,
+                description: item.description || "",
+                image: item.imageUrl,
+            }))
     }, [query.data])
-    return { ...query, flatItems: items }
+    return { ...query, catalogItems: items }
 }
 
 export function useMenuSearch(tenantSlug: string | null, search: string) {
     const trimmedSearch = search.trim()
 
-    return useQuery({
+    const query = useQuery({
         queryKey: menuKeys.search(tenantSlug || "", trimmedSearch),
         queryFn: () => fetchMenuItemsApi(tenantSlug!, 0, 10, trimmedSearch),
         enabled: !!tenantSlug && trimmedSearch.length > 0,
         staleTime: 1000 * 60 * 5,
     })
+
+    const items: UIItem[] = useMemo(() => {
+        if (!query.data) return []
+        return (query.data.content || []).filter((item) => item.active)
+            .map((item) => ({
+                id: String(item.id),
+                name: item.name,
+                price: item.price,
+                category: item.menuName,
+                description: item.description || "",
+                image: item.imageUrl,
+            }))
+    }, [query.data])
+
+    return { ...query, searchItems: items }
 }

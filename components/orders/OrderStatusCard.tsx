@@ -1,6 +1,6 @@
+import { ChevronDown, Lock } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-import { ChevronDown, Lock } from "lucide-react-native";
 import Text from "../AppText";
 
 interface OrderStatusCardProps {
@@ -55,18 +55,15 @@ export const OrderStatusCard: React.FC<OrderStatusCardProps> = ({
                 <Text style={{ color: colors.textMuted, fontWeight: "600" }}>Payment Status</Text>
                 <TouchableOpacity
                     disabled={isOrderFinalized}
-                    onPress={onPaymentStatusPress}
                     activeOpacity={0.7}
                     style={[styles.toggleBadge, { backgroundColor: paymentColors.bg }]}
                 >
                     <Text style={{ color: paymentColors.text, fontWeight: "700", fontSize: 13 }}>
                         {paymentStatus}
                     </Text>
-                    {isOrderFinalized ? (
+                    {isOrderFinalized && (
                         <Lock size={12} color={paymentColors.text} style={{ marginLeft: 6 }} />
-                    ) : (
-                        <ChevronDown size={14} color={paymentColors.text} style={{ marginLeft: 6 }} />
-                    )}
+                    ) }
                 </TouchableOpacity>
             </View>
         </View>

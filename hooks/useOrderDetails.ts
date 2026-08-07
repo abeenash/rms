@@ -1,5 +1,5 @@
 import { fetchMenuItemsApi, MenuItem } from "@/services/menuService";
-import { addItemsToOrderApi, AddOrderItemsPayload, deleteOrderItemApi, fetchOrderByIdApi, generateIdempotencyKey, Order, OrderItem, updateOrderItemQtyApi, updateOrderStatusApi, updatePaymentStatusApi } from "@/services/orderService";
+import { addItemsToOrderApi, AddOrderItemsPayload, cancelOrderApi, deleteOrderItemApi, fetchOrderByIdApi, generateIdempotencyKey, Order, OrderItem, updateOrderItemQtyApi, updateOrderStatusApi, updatePaymentStatusApi } from "@/services/orderService";
 import { fetchPromoCodesApi, PromoCode } from "@/services/promoService";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -146,24 +146,33 @@ export function useOrderDetails() {
     }, [catalogItems, debouncedQuery]);
 
     // Cancel order confirmation
-    const confirmOrderCancellation = useCallback(() => {
+    const confirmOrderCancellation = useCallback(async () => {
+        if (!tenantSlug || !orderId) return
+
         showAlert(
             "⚠️ Cancel Order",
             "Are you sure you want to cancel this order? This action is permanent and cannot be undone.",
             [
-                { text: "No, Keep Order", style: "cancel" },
+                { text: "Keep Order", style: "cancel" },
                 {
                     text: "Yes, Cancel",
                     style: "destructive",
-                    onPress: () => {
-                        setOrderStatus("CANCELLED");
-                        setPaymentStatus("PENDING");
-                        showToast("Order cancelled");
+                    onPress: async () => {
+                        try {
+                            const updatedOrder = await cancelOrderApi(tenantSlug, orderId)
+                            setOrderStatus(updatedOrder.status)
+                            setPaymentStatus(updatedOrder.paymentStatus || "PENDING")
+                            showToast("Order cancelled")
+                        } catch (error: any) {
+                            const msg = error?.response?.data?.message || "Could not cancel order. Please try again."
+                            showAlert("Cancellation failed", msg)
+                        }
                     }
-                }
-            ]
+                },
+            ],
+            { cancelable: true }
         );
-    }, [showToast, showAlert]);
+    }, [tenantSlug, orderId, showToast, showAlert]);
 
     // Order status selection modal
     const handleOrderStatusSelect = useCallback(() => {
@@ -176,51 +185,21 @@ export function useOrderDetails() {
         }
 
         showAlert(
-            "Update Order Status",
-            "Select the new status for this order:",
+            "Is this order cancelled?",
+            "Tap below if this order is cancelled.",
             [
-                {
-                    text: "CONFIRMED",
-                    onPress: async () => {
-                        try {
-                            await updateOrderStatusApi(tenantSlug!, orderId!, "CONFIRMED");
-                            setOrderStatus("CONFIRMED");
-                            showToast("Order set to Confirmed");
-                        } catch (err: any) {
-                            const msg = err?.response?.data?.message || "Could not update order status.";
-                            showAlert("Update Failed", msg);
-                        }
-                    }
-                },
-                {
-                    text: "DELIVERED (Mark as Paid)",
-                    onPress: async () => {
-                        try {
-                            await updatePaymentStatusApi(tenantSlug!, orderId!, {
-                                paymentStatus: "PAID",
-                                paymentMethod: "CASH",
-                            });
-                            await updateOrderStatusApi(tenantSlug!, orderId!, "DELIVERED");
-                            setOrderStatus("DELIVERED");
-                            setPaymentStatus("PAID");
-                            showToast("Order delivered & paid!");
-                        } catch (err: any) {
-                            const msg = err?.response?.data?.message || "Could not update order status.";
-                            showAlert("Update Failed", msg);
-                        }
-                    }
-                },
                 {
                     text: "CANCEL ORDER",
                     style: "destructive",
                     onPress: () => confirmOrderCancellation()
-                },
-                { text: "Cancel", style: "cancel" }
-            ]
+                }
+            ],
+            { cancelable: true }
         );
-    }, [isOrderFinalized, orderStatus, tenantSlug, orderId, showToast, confirmOrderCancellation, showAlert]);
 
-    // Payment status selection modal
+    }, [isOrderFinalized, orderStatus, tenantSlug, confirmOrderCancellation, showAlert]);
+
+    // Payment status selection modal --> this will be removed later because "💵CASH" and "👝DIGITAL_WALLET" is enough. Also, to avoid confusion for the waiter.
     const handlePaymentStatusSelect = useCallback(() => {
         if (isOrderFinalized) {
             showAlert(

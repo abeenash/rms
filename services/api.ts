@@ -22,8 +22,9 @@ export const setOnUnauthorizedCallback = (callback: () => Promise<void> | void) 
     onUnauthorizedCallback = callback;
 }
 
+let isHandlingUnauthorized = false;
+
 api.interceptors.request.use(async (config) => {
-    // Skip sending Authorization header for auth endpoints (login, register, etc.)
     const isAuthEndpoint = config.url?.includes('/auth/');
     if (!isAuthEndpoint) {
         const token = await SecureStore.getItemAsync('access_token');
@@ -37,10 +38,10 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
     (response) => response,
     async (error) => {
-        if (error.response?.status === 401) {
-            // Clear invalid stored token so future requests are clean
+        const isAuthEndpoint = error.config?.url?.includes('/auth/');
+        if (error.response?.status === 401 && !isAuthEndpoint && !isHandlingUnauthorized) {
+            isHandlingUnauthorized = true;
             try {
-
                 if (onUnauthorizedCallback) {
                     await onUnauthorizedCallback();
                 } else {
@@ -51,7 +52,10 @@ api.interceptors.response.use(
                 router.replace('/')
             } catch (e) {
                 console.error("Failed to handle 401 session cleanup:", e);
+            } finally {
+                isHandlingUnauthorized = false;
             }
+            return new Promise(() => { })
         }
         return Promise.reject(error);
     }
