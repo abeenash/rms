@@ -55,7 +55,6 @@ api.interceptors.response.use(
             } finally {
                 isHandlingUnauthorized = false;
             }
-            return new Promise(() => { })
         }
         return Promise.reject(error);
     }
