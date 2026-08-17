@@ -26,6 +26,7 @@ import Text from "../../components/AppText"
 import { useCustomAlert } from "../../context/AlertContext"
 import { useAuth } from "../../context/AuthContext"
 import { useTheme } from "../../context/ThemeContext"
+import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "@/utils/networkError"
 
 const { width } = Dimensions.get("window")
 const CARD_WIDTH = (width - 48) / 2
@@ -113,7 +114,9 @@ export default function DashboardScreen() {
 
       setTables(formattedTables)
     } catch (error) {
-      console.error("Failed to fetch live tables:", error)
+      if (isNetworkError(error)) {
+        showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
+      }
     } finally {
       setIsLoading(false)
       setRefreshing(false)

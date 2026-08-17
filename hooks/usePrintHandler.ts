@@ -1,4 +1,5 @@
 import * as Print from 'expo-print'
+import * as Sharing from 'expo-sharing'
 import { useEffect, useRef } from 'react'
 import {
     Alert,
@@ -16,27 +17,17 @@ export const showToast = (message: string) => {
 }
 
 export function usePrintHandler() {
-    const appBackgroundTimeRef = useRef<number>(0);
     const pendingToastRef = useRef<string | null>(null);
     const isPrintingRef = useRef<boolean>(false);
 
     useEffect(() => {
         const subscription = AppState.addEventListener('change', (nextAppState) => {
-            if (nextAppState === 'inactive' || nextAppState === 'background') {
-                if (isPrintingRef.current) {
-                    appBackgroundTimeRef.current = Date.now();
-                }
-            } else if (nextAppState === 'active') {
+            if (nextAppState === 'active') {
                 if (isPrintingRef.current && pendingToastRef.current) {
                     const message = pendingToastRef.current;
-                    const timeSpent = Date.now() - appBackgroundTimeRef.current;
-
                     isPrintingRef.current = false;
                     pendingToastRef.current = null;
-
-                    if (timeSpent > 2500) {
-                        setTimeout(() => { showToast(message); }, 500);
-                    }
+                    setTimeout(() => { showToast(message); }, 500);
                 }
             }
         });
@@ -55,5 +46,16 @@ export function usePrintHandler() {
         }
     }
 
-    return { printDocument, showToast }
+    const shareDocument = async (html: string, toastMessage: string) => {
+        try {
+            const { uri } = await Print.printToFileAsync({ html })
+            await Sharing.shareAsync(uri)
+            showToast(toastMessage)
+        } catch (error) {
+            console.error("Share execution failed:", error)
+            showToast("Failed to generate document.")
+        }
+    }
+
+    return { printDocument, shareDocument, showToast }
 }

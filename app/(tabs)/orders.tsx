@@ -15,16 +15,22 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "@/utils/networkError";
 import { useFocusEffect, useRouter } from "expo-router";
 import Text from "../../components/AppText";
+import { useCustomAlert } from "../../context/AlertContext";
 import { useTheme } from "../../context/ThemeContext";
 
-import { Order, fetchOrdersApi } from "@/services/orderService";
+import { fetchOrdersApi, Order, OrderStatus } from "@/services/orderService";
+import { timeAgo } from "@/utils/timeAgo";
 import { useAuth } from "../../context/AuthContext";
+
+const WAITER_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"];
 
 export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
+  const { showAlert } = useCustomAlert();
 
   const router = useRouter()
   const { tenantSlug } = useAuth();
@@ -33,21 +39,7 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [activeFilter, setActiveFilter] = useState<"all" | "confirmed" | "delivered" | "cancelled">("all");
-
-  const formatOrderTime = (isoString?: string) => {
-    if (!isoString) return { dateDisplay: "N/A", timeStr: "" };
-    const date = new Date(isoString);
-
-    if (isNaN(date.getTime())) return { dateDisplay: "N/A", timestr: "" }
-
-    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-    return {
-      dateDisplay: `${dateStr} | ${timeStr}`,
-      timeStr
-    };
-  };
+  const [activeFilter, setActiveFilter] = useState<"all" | OrderStatus>("all");
 
   const loadOrders = useCallback(async (showLoader = true) => {
     if (!tenantSlug) return
@@ -60,7 +52,9 @@ export default function OrdersScreen() {
       const fetchedOrders = await fetchOrdersApi(tenantSlug);
       setOrders(fetchedOrders)
     } catch (error) {
-      console.error("Failed to load orders:", error);
+      if (isNetworkError(error)) {
+        showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
+      }
     } finally {
       setIsLoading(false)
       setRefreshing(false);
@@ -94,19 +88,26 @@ export default function OrdersScreen() {
     border: isDark ? "#334155" : "#E2E8F0",
     skeletonBlock: isDark ? "#334155" : "#E2E8F0",
 
+    pending: isDark ? "#EAB308" : "#D97706",
     confirmed: isDark ? "#EAB308" : "#D97706",
+    preparing: isDark ? "#3B82F6" : "#2563EB",
+    out_for_delivery: isDark ? "#8B5CF6" : "#7C3AED",
     delivered: isDark ? "#22C55E" : "#16A34A",
+    completed: isDark ? "#22C55E" : "#16A34A",
     cancelled: isDark ? "#EF4444" : "#DC2626",
 
+    pendingBg: isDark ? "#2E2509" : "#FEF3C7",
     confirmedBg: isDark ? "#2E2509" : "#FEF3C7",
+    preparingBg: isDark ? "#0C1A3D" : "#EFF6FF",
+    out_for_deliveryBg: isDark ? "#1A0F2E" : "#F5F3FF",
     deliveredBg: isDark ? "#0A251C" : "#F0FDF4",
+    completedBg: isDark ? "#0A251C" : "#F0FDF4",
     cancelledBg: isDark ? "#2A1414" : "#FEF2F2",
   };
 
   const filteredOrders = orders.filter(order => {
-    const statusLower = order.status?.toLowerCase();
     if (activeFilter === "all") return true
-    return statusLower === activeFilter
+    return order.status === activeFilter
   });
 
   return (
@@ -125,7 +126,7 @@ export default function OrdersScreen() {
         </Text>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ gap: 8 }}>
-          {(["all", "confirmed", "delivered", "cancelled"] as const).map((filter) => {
+          {(["all", ...WAITER_STATUSES] as const).map((filter) => {
             const isSelected = activeFilter === filter;
             return (
               <TouchableOpacity
@@ -148,7 +149,7 @@ export default function OrdersScreen() {
                     }
                   ]}
                 >
-                  {filter}
+                  {filter === "all" ? "ALL" : filter.replace(/_/g, " ")}
                 </Text>
               </TouchableOpacity>
             );
@@ -176,11 +177,11 @@ export default function OrdersScreen() {
             </View>
           ) : (
             filteredOrders.map((order) => {
-              const statusLower = (order.status || "pending").toLowerCase()
-              const badgeBg = colors[`${statusLower}Bg` as keyof typeof colors] || colors.confirmedBg;  //make your pendingBg and down pending also
-              const badgeText = colors[statusLower as keyof typeof colors] || colors.confirmed;
+              const statusKey = (order.status || "PENDING").toLowerCase()
+              const badgeBg = colors[`${statusKey}Bg` as keyof typeof colors] || colors.pendingBg;
+              const badgeText = colors[statusKey as keyof typeof colors] || colors.pending;
 
-              const { dateDisplay } = formatOrderTime(order.orderedAt)
+              const display = timeAgo(order.orderedAt)
 
               const itemsCount = (order.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0);
 
@@ -235,7 +236,7 @@ export default function OrdersScreen() {
                       <View style={styles.timeContainer}>
                         <Clock size={13} color={colors.textMuted} />
                         <Text style={[styles.timeText, { color: colors.textMuted, fontWeight: "500" }]}>
-                          {dateDisplay}
+                          {display}
                         </Text>
                       </View>
                       <Text style={[styles.amountText, { color: colors.textMain, fontWeight: "700" }]}>
@@ -277,7 +278,6 @@ const styles = StyleSheet.create({
   },
   filterChipText: {
     fontSize: 13,
-    textTransform: "capitalize",
   },
   ordersList: {
     gap: 12,

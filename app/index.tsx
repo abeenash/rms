@@ -24,6 +24,8 @@ import Animated, {
 import { useCustomAlert } from "../context/AlertContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { presentLiveAlert, requestLiveAlertsPermission } from "../services/localNotificationService";
+import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "../utils/networkError";
 
 const LoginScreen = () => {
   const [email, setEmail] = useState("")
@@ -46,10 +48,26 @@ const LoginScreen = () => {
     try {
       setIsLoading(true);
       await login({ email: trimmedEmail, password });
+      try {
+        const allowed = await requestLiveAlertsPermission();
+        if (allowed) {
+          await presentLiveAlert({
+            event: "login_success",
+            title: "Info",
+            body: "Login Successfully!",
+          });
+        }
+      } catch (notificationError) {
+        console.warn("Login notification unavailable:", notificationError);
+      }
       router.replace("/dashboard");
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message || "Invalid Details";
-      showAlert("LOGIN FAILED!", "Please check your email or password");
+      if (isNetworkError(error)) {
+        showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
+      } else {
+        const errorMessage = error.response?.data?.message || error.message || "Invalid Details";
+        showAlert("LOGIN FAILED!", "Please check your email or password");
+      }
     } finally {
       setIsLoading(false);
     }

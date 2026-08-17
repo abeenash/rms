@@ -1,4 +1,5 @@
 import { addItemsToOrderApi, AddOrderItemsPayload, createOrderApi, CreateOrderPayload, createTableOrderApi, CreateTableOrderPayload, deleteOrderItemApi, fetchActiveOrderByTableIdApi, fetchOrderByIdApi, generateIdempotencyKey, updateOrderItemQtyApi } from "@/services/orderService";
+import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "@/utils/networkError";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCustomAlert } from "../context/AlertContext";
@@ -149,7 +150,7 @@ export function useTableOrdering() {
 
     const { catalogItems, isLoading: isCatalogLoading } = useCatalogItems(tenantSlug)
     const categoriesQuery = useMenuCategories(tenantSlug)
-    const {searchItems, isLoading: isSearchFetching} = useMenuSearch(tenantSlug, search)
+    const { searchItems, isLoading: isSearchFetching } = useMenuSearch(tenantSlug, search)
 
     const categories = useMemo(() => {
         const names = (categoriesQuery.data || []).filter((m) => m.active).map((m) => m.menuName)
@@ -163,12 +164,12 @@ export function useTableOrdering() {
 
     const sourceItems = isSearchActive ? searchItems : catalogItems
 
-    const filteredMenuItems = useMemo(()=>{
-        if(isSearchActive){
+    const filteredMenuItems = useMemo(() => {
+        if (isSearchActive) {
             return sourceItems
         }
-        return sourceItems.filter((item)=> selectedCategory === "All" || item.category === selectedCategory)
-    },[sourceItems,selectedCategory,isSearchActive])
+        return sourceItems.filter((item) => selectedCategory === "All" || item.category === selectedCategory)
+    }, [sourceItems, selectedCategory, isSearchActive])
 
     //debounce effect for the search
     // useEffect(() => {
@@ -350,13 +351,16 @@ export function useTableOrdering() {
             await updateOrderItemQtyApi(tenantSlug, targetOrderId, stringId, targetNewQty)
             setModifiedItemNames((prev) => new Set(prev).add(targetItemName))
         } catch (error: any) {
-            console.error("Failed to update item quantity:", error)
-
-            //rollback ui state on failure
-            setExistingOrderItems((prev) => prev.map((item) => (
-                item.id === stringId && originalItem ? originalItem : item
-            )))
-            showAlert("Update Failed", "Could not update item quantity on the server")
+            if (isNetworkError(error)) {
+                showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
+            } else {
+                console.error("Failed to update item quantity:", error)
+                //rollback ui state on failure
+                setExistingOrderItems((prev) => prev.map((item) => (
+                    item.id === stringId && originalItem ? originalItem : item
+                )))
+                showAlert("Update Failed", "Could not update item quantity on the server")
+            }
         }
     }, [tenantSlug, targetOrderId, showAlert])
 
@@ -382,9 +386,13 @@ export function useTableOrdering() {
                             await deleteOrderItemApi(tenantSlug, targetOrderId, itemId)
                             setModifiedItemNames((prev) => new Set(prev).add(name))
                         } catch (error: any) {
-                            console.error("Failed to delete item:", error)
-                            setExistingOrderItems(originalList)
-                            showAlert("Deletion Failed", `Could not remove ${name} from the server.`)
+                            if (isNetworkError(error)) {
+                                showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
+                            } else {
+                                console.error("Failed to delete item:", error)
+                                setExistingOrderItems(originalList)
+                                showAlert("Deletion Failed", `Could not remove ${name} from the server.`)
+                            }
                         }
                     }
                 }
@@ -512,26 +520,29 @@ export function useTableOrdering() {
                 ]
             )
         } catch (error: any) {
-            console.error("Failed to process order:", error)
-            const statusCode = error?.response?.status;
-            // const serverMsg = error?.response?.data?.message || "Could not complete request. Please try again."
-            const serverMsg =
-                error?.response?.data?.message ||
-                (error?.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
-                "Invalid order parameters provided (400 Bad Request)."
-
-            if (statusCode === 409) {
-                showAlert(
-                    "Table State Conflict (409)",
-                    `The server rejected the request: "${serverMsg}". If this table is already occupied, please go back to tables view and re-select.`
-                )
+            if (isNetworkError(error)) {
+                showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
             } else {
-                showAlert(
-                    "Order Processing Failed",
-                    serverMsg
-                )
-            }
+                console.error("Failed to process order:", error)
+                const statusCode = error?.response?.status;
+                // const serverMsg = error?.response?.data?.message || "Could not complete request. Please try again."
+                const serverMsg =
+                    error?.response?.data?.message ||
+                    (error?.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
+                    "Invalid order parameters provided (400 Bad Request)."
 
+                if (statusCode === 409) {
+                    showAlert(
+                        "Table State Conflict (409)",
+                        `The server rejected the request: "${serverMsg}". If this table is already occupied, please go back to tables view and re-select.`
+                    )
+                } else {
+                    showAlert(
+                        "Order Processing Failed",
+                        serverMsg
+                    )
+                }
+            }
         } finally {
             setIsSubmittingOrder(false)
         }

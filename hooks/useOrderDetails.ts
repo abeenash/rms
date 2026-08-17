@@ -1,6 +1,7 @@
 import { fetchMenuItemsApi, MenuItem } from "@/services/menuService";
-import { addItemsToOrderApi, AddOrderItemsPayload, cancelOrderApi, deleteOrderItemApi, fetchOrderByIdApi, generateIdempotencyKey, Order, OrderItem, updateOrderItemQtyApi, updateOrderStatusApi, updatePaymentStatusApi } from "@/services/orderService";
+import { addItemsToOrderApi, AddOrderItemsPayload, applyPromoApi, cancelOrderApi, deleteOrderItemApi, fetchOrderByIdApi, generateIdempotencyKey, Order, OrderItem, removePromoApi, updateOrderItemQtyApi, updateOrderStatusApi, updatePaymentStatusApi } from "@/services/orderService";
 import { fetchPromoCodesApi, PromoCode } from "@/services/promoService";
+import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "@/utils/networkError";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCustomAlert } from "../context/AlertContext";
@@ -14,10 +15,11 @@ export function useOrderDetails() {
     const { isDark } = useTheme();
     const { tenantSlug } = useAuth();
     const { showAlert } = useCustomAlert();
-    const { printDocument, showToast } = usePrintHandler();
+    const { printDocument, shareDocument, showToast } = usePrintHandler();
 
     // Screen and Order state
     const [isLoading, setIsLoading] = useState(true);
+    const [networkError, setNetworkError] = useState(false);
     const [orderData, setOrderData] = useState<Order | null>(null);
     const [isInvoiceVisible, setIsInvoiceVisible] = useState(false);
     const [isQRModalVisible, setIsQRModalVisible] = useState(false);
@@ -39,7 +41,9 @@ export function useOrderDetails() {
     const [isSearching, setIsSearching] = useState<boolean>(false);
 
     // Discounts & Promo state
-    const [promoInput, setPromoInput] = useState("");
+    const [promoSearchQuery, setPromoSearchQuery] = useState("");
+    const [selectedPromo, setSelectedPromo] = useState<PromoCode | null>(null);
+    const [isPromoExpanded, setIsPromoExpanded] = useState(false);
     const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
     const [promoDiscountVal, setPromoDiscountVal] = useState(0);
     const [manualDiscountStr, setManualDiscountStr] = useState("0");
@@ -79,9 +83,18 @@ export function useOrderDetails() {
                 setPaymentStatus(res.paymentStatus || "PENDING");
                 setOrderItems(res.items || []);
                 if (res.manualDiscount) setManualDiscountStr(res.manualDiscount.toString());
+                if (res.promoCode) {
+                    setAppliedPromo(res.promoCode);
+                    setPromoDiscountVal(res.promoDiscount || 0);
+                } else {
+                    setAppliedPromo(null);
+                    setPromoDiscountVal(0);
+                }
             }
         } catch (error) {
-            showAlert("Error", "Could not load order details.");
+            if (isNetworkError(error)) {
+                setNetworkError(true);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -98,9 +111,11 @@ export function useOrderDetails() {
                 const response = await fetchMenuItemsApi(tenantSlug, 0, 100, "");
                 const itemsList = response?.content || [];
                 setCatalogItems(itemsList.filter((item) => item.active !== false));
-            } catch (error) {
-                console.error("Failed to load catalog menu items:", error);
-            } finally {
+        } catch (error) {
+            if (isNetworkError(error)) {
+                setNetworkError(true);
+            }
+        } finally {
                 setIsCatalogLoading(false);
             }
         };
@@ -111,8 +126,14 @@ export function useOrderDetails() {
     useEffect(() => {
         if (!tenantSlug) return;
         const loadPromos = async () => {
-            const list = await fetchPromoCodesApi(tenantSlug);
-            setAvailablePromos(list);
+            try {
+                const list = await fetchPromoCodesApi(tenantSlug);
+                setAvailablePromos(list);
+            } catch (error) {
+                if (isNetworkError(error)) {
+                    showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
+                }
+            }
         };
         loadPromos();
     }, [tenantSlug]);
@@ -144,6 +165,18 @@ export function useOrderDetails() {
         const query = debouncedQuery.toLowerCase();
         return catalogItems.filter((item) => item.name.toLowerCase().includes(query));
     }, [catalogItems, debouncedQuery]);
+
+    // Filtering available promos by search query
+    const filteredPromos = useMemo(() => {
+        const activePromos = availablePromos.filter((p) => p.status === "ACTIVE");
+        const query = (promoSearchQuery || "").trim().toLowerCase();
+        if (!query) return activePromos;
+        return activePromos.filter(
+            (p) =>
+                (p.code || "").toLowerCase().includes(query) ||
+                (p.description || "").toLowerCase().includes(query)
+        );
+    }, [availablePromos, promoSearchQuery]);
 
     // Cancel order confirmation
     const confirmOrderCancellation = useCallback(async () => {
@@ -276,13 +309,16 @@ export function useOrderDetails() {
             setOrderStatus("DELIVERED");
             showToast(`Settled via ${method}! Order marked as Delivered.`)
         } catch (error: any) {
-            console.error("Payment settlement error:", error?.response?.data || error);
-            const serverErr = error?.response?.data?.errors;
-            const msg =
-                (serverErr ? (typeof serverErr === "object" ? JSON.stringify(serverErr) : String(serverErr)) : null) ||
-                error?.response?.data?.message ||
-                "Failed to settle payment. Please try again.";
-            showAlert("Settlement Failed", msg);
+            if (isNetworkError(error)) {
+                showAlert("Network Error", NETWORK_OFFLINE_MESSAGE);
+            } else {
+                const serverErr = error?.response?.data?.errors;
+                const msg =
+                    (serverErr ? (typeof serverErr === "object" ? JSON.stringify(serverErr) : String(serverErr)) : null) ||
+                    error?.response?.data?.message ||
+                    "Failed to settle payment. Please try again.";
+                showAlert("Settlement Failed", msg);
+            }
         }
     }, [isCancelled, isPaid, hasPendingItems, tenantSlug, orderId, parsedManualDiscount, showToast, showAlert]);
 
@@ -309,11 +345,14 @@ export function useOrderDetails() {
         try {
             await updateOrderItemQtyApi(tenantSlug, orderId, itemId, nextQty);
         } catch (error) {
-            console.error("Failed to update item quantity:", error);
             setOrderItems((prev) => prev.map((item) => (
                 String(item.id) === String(itemId) ? targetItem : item
             )));
-            showAlert("Update Failed", "Could not update item quantity on the server.");
+            if (isNetworkError(error)) {
+                showAlert("Network Error", NETWORK_OFFLINE_MESSAGE);
+            } else {
+                showAlert("Update Failed", "Could not update item quantity on the server.");
+            }
         }
     }, [isOrderFinalized, tenantSlug, orderId, orderItems, showAlert]);
 
@@ -334,9 +373,12 @@ export function useOrderDetails() {
                     try {
                         await deleteOrderItemApi(tenantSlug, orderId, itemId);
                     } catch (error) {
-                        console.error("Failed to delete item:", error);
                         setOrderItems(prevItems);
-                        showAlert("Delete Failed", "Could not delete item from server.");
+                        if (isNetworkError(error)) {
+                            showAlert("Network Error", NETWORK_OFFLINE_MESSAGE);
+                        } else {
+                            showAlert("Delete Failed", "Could not delete item from server.");
+                        }
                     }
                 }
             }
@@ -383,44 +425,77 @@ export function useOrderDetails() {
             await loadOrderData()
             showToast("Items added to order!")
         } catch (error: any) {
-            const msg = error?.response?.data?.message || "Failed to add items. Please try again."
-            showAlert("Add Items Failed", msg);
+            if (isNetworkError(error)) {
+                showAlert("Network Error", NETWORK_OFFLINE_MESSAGE);
+            } else {
+                const msg = error?.response?.data?.message || "Failed to add items. Please try again."
+                showAlert("Add Items Failed", msg);
+            }
         } finally {
             setIsNewSubmittingNewItems(false);
         }
     }, [tenantSlug, orderId, pendingItems, isSubmittingNewItems, loadOrderData, showToast, showAlert])
 
-    // Apply promo code logic
-    const handleApplyPromo = useCallback(() => {
-        const inputCode = promoInput.trim().toUpperCase();
-        if (!inputCode) return;
-        const matchedPromo = availablePromos.find(
-            (p) => p.code.toUpperCase() === inputCode && p.status === "ACTIVE"
+    // Select a promo from the search list
+    const handleSelectPromo = useCallback((promo: PromoCode) => {
+        setSelectedPromo(promo);
+        setPromoSearchQuery("");
+        setIsPromoExpanded(false);
+    }, []);
+
+    // Apply promo code logic — backend is the source of truth for validation & discount
+    const handleApplyPromo = useCallback(async () => {
+        if (!selectedPromo) {
+            showAlert("No Promo Selected", "Please select a promo code from the list first.");
+            return;
+        }
+
+        try {
+            const updatedOrder = await applyPromoApi(tenantSlug!, orderId!, selectedPromo.code);
+            setAppliedPromo(updatedOrder.promoCode || selectedPromo.code);
+            setPromoDiscountVal(updatedOrder.promoDiscount || 0);
+            setSelectedPromo(null);
+            showAlert("Promo Applied!", `Code '${updatedOrder.promoCode || selectedPromo.code}' applied. Discount: Rs. ${updatedOrder.promoDiscount || 0}`);
+        } catch (error: any) {
+            if (isNetworkError(error)) {
+                showAlert("Network Error", NETWORK_OFFLINE_MESSAGE);
+            } else {
+                const msg = error?.response?.data?.message || "Failed to apply promo. Please try again.";
+                showAlert("Promo Failed", msg);
+            }
+        }
+    }, [selectedPromo, tenantSlug, orderId, showAlert]);
+
+    const handleClearPromo = useCallback(() => {
+        if (!appliedPromo) return;
+        showAlert(
+            "Remove Promo",
+            `Remove promo code '${appliedPromo}' from this order?`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Yes, Remove",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await removePromoApi(tenantSlug!, orderId!);
+                            setAppliedPromo(null);
+                            setPromoDiscountVal(0);
+                            showToast("Promo removed");
+                        } catch (error: any) {
+                            if (isNetworkError(error)) {
+                                showAlert("Network Error", NETWORK_OFFLINE_MESSAGE);
+                            } else {
+                                const msg = error?.response?.data?.message || "Failed to remove promo. Please try again.";
+                                showAlert("Remove Failed", msg);
+                            }
+                        }
+                    }
+                },
+            ],
+            { cancelable: true }
         );
-        if (!matchedPromo) {
-            showAlert("Invalid Promo", "The promo code entered is invalid or expired.");
-            return;
-        }
-        if (matchedPromo.minOrderAmount && itemsTotalSum < matchedPromo.minOrderAmount) {
-            showAlert(
-                "Minimum Amount Required",
-                `Order total must be at least Rs. ${matchedPromo.minOrderAmount} to use code ${matchedPromo.code}`
-            );
-            return;
-        }
-
-        let discountAmount = (itemsTotalSum * matchedPromo.discountPercent) / 100;
-        if (matchedPromo.maxDiscountAmount && matchedPromo.maxDiscountAmount > 0) {
-            discountAmount = Math.min(discountAmount, matchedPromo.maxDiscountAmount);
-        }
-
-        discountAmount = Math.round(discountAmount);
-        setAppliedPromo(matchedPromo.code);
-        setPromoDiscountVal(discountAmount);
-        setPromoInput("");
-
-        showAlert("Promo Applied!", `Code '${matchedPromo.code}' applied. Discount: Rs. ${discountAmount}`);
-    }, [availablePromos, itemsTotalSum, promoInput, showAlert]);
+    }, [appliedPromo, tenantSlug, orderId, showToast, showAlert]);
 
     const getStatusColors = useCallback((status: string) => {
         switch (status) {
@@ -437,12 +512,12 @@ export function useOrderDetails() {
     }, [colors]);
 
     const handlePrintPOS = useCallback(() => {
-        printDocument(generatePOSHtml(orderData, orderId || "", tenantSlug || "", orderItems, itemsTotalSum, parsedManualDiscount, grandFinalTotal), "POS bill saved!");
-    }, [printDocument, orderData, orderId, tenantSlug, orderItems, itemsTotalSum, parsedManualDiscount, grandFinalTotal]);
+        shareDocument(generatePOSHtml(orderData, orderId || "", tenantSlug || "", orderItems, itemsTotalSum, parsedManualDiscount, grandFinalTotal, appliedPromo, promoDiscountVal), "POS bill ready to share!");
+    }, [shareDocument, orderData, orderId, tenantSlug, orderItems, itemsTotalSum, parsedManualDiscount, grandFinalTotal, appliedPromo, promoDiscountVal]);
 
     const handlePrintInvoice = useCallback(() => {
-        printDocument(generateInvoiceHtml(orderData, orderId || "", tenantSlug || "", orderItems, itemsTotalSum, grandFinalTotal), "Invoice bill saved!");
-    }, [printDocument, orderData, orderId, tenantSlug, orderItems, itemsTotalSum, grandFinalTotal]);
+        shareDocument(generateInvoiceHtml(orderData, orderId || "", tenantSlug || "", orderItems, itemsTotalSum, grandFinalTotal, appliedPromo, promoDiscountVal), "Invoice ready to share!");
+    }, [shareDocument, orderData, orderId, tenantSlug, orderItems, itemsTotalSum, grandFinalTotal, appliedPromo, promoDiscountVal]);
 
     const handlePrintKOT = useCallback(() => {
         printDocument(generateKOTHtml(orderData, orderId || "", tenantSlug || "", orderItems), "KOT ticket sent to kitchen!");
@@ -453,6 +528,7 @@ export function useOrderDetails() {
         tenantSlug,
         colors,
         isLoading,
+        networkError,
         orderData,
         orderStatus,
         paymentStatus,
@@ -467,11 +543,17 @@ export function useOrderDetails() {
         filteredCatalog,
         isAddSectionExpanded,
         setIsAddSectionExpanded,
-        promoInput,
-        setPromoInput,
+        promoSearchQuery,
+        setPromoSearchQuery,
+        selectedPromo,
+        setSelectedPromo,
+        isPromoExpanded,
+        setIsPromoExpanded,
+        filteredPromos,
         appliedPromo,
         setAppliedPromo,
         setPromoDiscountVal,
+        promoDiscountVal,
         itemsTotalSum,
         parsedManualDiscount,
         grandFinalTotal,
@@ -485,7 +567,9 @@ export function useOrderDetails() {
         updateExistingQty,
         removeItem,
         addItemToActiveOrder,
+        handleSelectPromo,
         handleApplyPromo,
+        handleClearPromo,
         getStatusColors,
         handlePrintPOS,
         handlePrintInvoice,

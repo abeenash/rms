@@ -72,6 +72,10 @@ export const OfflineBanner: React.FC = () => {
 
 const styles = StyleSheet.create({
     banner: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
         zIndex: 9999,
         justifyContent: "center",
         alignItems: "center",

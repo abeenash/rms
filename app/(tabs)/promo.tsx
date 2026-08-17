@@ -6,12 +6,15 @@ import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } fr
 import { fetchPromoCodesApi, PromoCode } from "@/services/promoService"
 import { useFocusEffect } from "expo-router"
 import Text from "../../components/AppText"
+import { useCustomAlert } from "../../context/AlertContext"
 import { useAuth } from "../../context/AuthContext"
 import { useTheme } from "../../context/ThemeContext"
+import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "@/utils/networkError"
 
 export default function PromoScreen() {
   const { isDark } = useTheme()
   const { tenantSlug } = useAuth()
+  const { showAlert } = useCustomAlert()
 
   const [promos, setPromos] = useState<PromoCode[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,7 +32,9 @@ export default function PromoScreen() {
       const data = await fetchPromoCodesApi(tenantSlug)
       setPromos(data)
     } catch (error) {
-      console.error("Failed to load promo screen data:", error)
+      if (isNetworkError(error)) {
+        showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)

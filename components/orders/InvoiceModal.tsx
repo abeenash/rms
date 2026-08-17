@@ -15,6 +15,8 @@ interface InvoiceModalProps {
     itemsTotalSum: number
     grandFinalTotal: number
     tenantSlug?: string | null
+    appliedPromo?: string | null
+    promoDiscountVal?: number
     onPrintPOS: () => void
     onPrintInvoice: () => void
     onPrintKOT: () => void
@@ -29,6 +31,8 @@ export function InvoiceModal({
     itemsTotalSum,
     grandFinalTotal,
     tenantSlug,
+    appliedPromo,
+    promoDiscountVal,
     onPrintPOS,
     onPrintInvoice,
     onPrintKOT,
@@ -61,7 +65,7 @@ export function InvoiceModal({
                         </TouchableOpacity>
                     </View>
 
-                    <Text style={styles.invoiceGuestHeader}>{orderData?.customerName || "Walk-in Guest"}</Text>
+                    <Text style={styles.invoiceGuestHeader}>{orderData?.customerName || "Walk-in Customer"}</Text>
                     <View style={styles.invoiceLineDivider} />
 
                     <View style={styles.invoiceTableGridHeader}>
@@ -89,6 +93,12 @@ export function InvoiceModal({
                         <Text style={styles.invoiceSummaryLabel}>Subtotal</Text>
                         <Text style={styles.invoiceSummaryValue}>NPR {itemsTotalSum}</Text>
                     </View>
+                    {appliedPromo && (promoDiscountVal ?? 0) > 0 && (
+                        <View style={styles.invoiceSummaryRow}>
+                            <Text style={[styles.invoiceSummaryLabel, { color: "#DC2626" }]}>Promo ({appliedPromo})</Text>
+                            <Text style={[styles.invoiceSummaryValue, { color: "#DC2626" }]}>-NPR {promoDiscountVal}</Text>
+                        </View>
+                    )}
                     <View style={styles.invoiceSummaryRow}>
                         <Text style={[styles.invoiceSummaryLabel, { fontWeight: "bold", color: "#0F172A" }]}>Total</Text>
                         <Text style={[styles.invoiceSummaryValue, { fontWeight: "bold", fontSize: 16, color: "#0F172A" }]}>NPR {grandFinalTotal}</Text>
