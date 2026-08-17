@@ -17,7 +17,9 @@ export const generatePOSHtml = (
   orderItems: OrderItem[],
   itemsTotalSum: number,
   parsedManualDiscount: number,
-  grandFinalTotal: number
+  grandFinalTotal: number,
+  appliedPromo?: string | null,
+  promoDiscountVal?: number
 ) => {
   const currentDateTime = formatOrderTime(orderData?.orderedAt);
   const displayOrderNum = orderData?.orderNumber || `ORD-${orderId}`;
@@ -89,6 +91,7 @@ export const generatePOSHtml = (
             <span>Subtotal</span>
             <span class="bold">Rs ${itemsTotalSum}</span>
           </div>
+          ${appliedPromo && promoDiscountVal ? `<div class="total-row"><span>Promo (${appliedPromo})</span><span class="bold">-Rs ${promoDiscountVal}</span></div>` : ''}
           ${parsedManualDiscount > 0 ? `<div class="total-row"><span>Discount</span><span class="bold">-Rs ${parsedManualDiscount}</span></div>` : ''}
           <div class="total-row grand-total">
             <span class="bold">TOTAL</span>
@@ -110,7 +113,9 @@ export const generateInvoiceHtml = (
   tenantSlug: string | null | undefined,
   orderItems: OrderItem[],
   itemsTotalSum: number,
-  grandFinalTotal: number
+  grandFinalTotal: number,
+  appliedPromo?: string | null,
+  promoDiscountVal?: number
 ) => {
   const currentDateTime = formatOrderTime(orderData?.orderedAt);
   const displayOrderNum = orderData?.orderNumber || `ORD-${orderId}`;
@@ -179,6 +184,7 @@ export const generateInvoiceHtml = (
 
         <div class="totals-wrapper">
           <div class="total-row"><span>Subtotal</span><span>Rs ${itemsTotalSum}</span></div>
+          ${appliedPromo && promoDiscountVal ? `<div class="total-row"><span>Promo (${appliedPromo})</span><span class="bold">-Rs ${promoDiscountVal}</span></div>` : ''}
           <div class="total-row grand-total"><span class="bold">Total</span><span class="bold">Rs ${grandFinalTotal}</span></div>
         </div>
 

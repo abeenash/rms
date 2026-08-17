@@ -1,3 +1,5 @@
+import "../polyfills"
+
 import {
   DMSans_400Regular,
   DMSans_600SemiBold,
@@ -12,7 +14,9 @@ import { SplashScreenOverlay } from "../components/SplashScreenOverlay"
 import { AlertProvider } from "../context/AlertContext"
 import { AuthProvider, useAuth } from "../context/AuthContext"
 import { ThemeProvider } from "../context/ThemeContext"
+import { useOrderEventAlerts } from "../hooks/useOrderEventAlerts"
 import { TanStackProvider } from "../providers/TanStackProvider"
+import { configureLiveAlertsChannel } from "../services/localNotificationService"
 
 
 SplashScreen.preventAutoHideAsync()
@@ -25,6 +29,7 @@ function RootLayoutInner() {
   });
 
   const { isLoading: authLoading } = useAuth();
+  useOrderEventAlerts();
   const [overlayDismissed, setOverlayDismissed] = useState(false);
 
   const fontsReady = fontsLoaded || fontError;
@@ -35,6 +40,10 @@ function RootLayoutInner() {
       SplashScreen.hideAsync()
     }
   }, [fontsReady])
+
+  useEffect(() => {
+    void configureLiveAlertsChannel();
+  }, [])
 
   if (!fontsReady) {
     return null;

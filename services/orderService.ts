@@ -1,5 +1,17 @@
 import api from "./api";
 
+export const ORDER_STATUSES = [
+    "PENDING",
+    "CONFIRMED",
+    "PREPARING",
+    "OUT_FOR_DELIVERY",
+    "DELIVERED",
+    "COMPLETED",
+    "CANCELLED",
+] as const;
+
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
 export interface OrderItem {
     id: number;
     itemName: string;
@@ -23,7 +35,7 @@ export interface ActiveOrderItem {
 export interface Order {
     id: number;
     orderNumber: string;
-    status: "PENDING" | "CONFIRMED" | "PREPARING" | "OUT_FOR_DELIVERY" | "DELIVERED";
+    status: OrderStatus;
     totalAmount: number;
     promoCode?: string | null;
     promoDiscount?: number | null;
@@ -41,14 +53,6 @@ export interface Order {
     tableNumber?: number | null;
     items: OrderItem[];
 }
-
-export type OrderStatus =
-    | "PENDING"
-    | "CONFIRMED"
-    | "PREPARING"
-    | "OUT_FOR_DELIVERY"
-    | "DELIVERED"
-    | "CANCELLED";
 
 export type PaymentStatus =
     | "INITIATED"
@@ -71,7 +75,7 @@ export interface PaginatedData<T> {
 export interface ActiveTableOrderData {
     id: number;
     orderNumber: string;
-    status: "CONFIRMED" | "DELIVERED" | "PENDING" | string;
+    status: OrderStatus | string;
     totalAmount: number;
     customerName?: string;
     customerPhone?: string;
@@ -233,5 +237,26 @@ export const updatePaymentStatusApi = async (tenantSlug: string, orderId: string
     }
     const response = await api.put(`/public/${tenantSlug}/order/${orderId}/paymentStatus`, null, { params });
     return response.data;
+}
+
+export const cancelOrderApi = async (tenantSlug: string, orderId: string | number): Promise<Order> => {
+    const response = await api.patch<SingleOrderApiResponse>(`/public/${tenantSlug}/order/${orderId}/cancel`)
+    return response.data.data;
+}
+
+export const applyPromoApi = async (tenantSlug: string, orderId: string | number, code: string): Promise<Order> => {
+    const response = await api.put<SingleOrderApiResponse>(
+        `/public/${tenantSlug}/order/${orderId}/apply-promo`,
+        null,
+        { params: { code } }
+    );
+    return response.data.data;
+}
+
+export const removePromoApi = async (tenantSlug: string, orderId: string | number): Promise<Order> => {
+    const response = await api.delete<SingleOrderApiResponse>(
+        `/public/${tenantSlug}/order/${orderId}/promo`
+    );
+    return response.data.data;
 }
 

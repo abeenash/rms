@@ -11,7 +11,7 @@ export function SplashScreenOverlay({ onAnimationComplete, isReady }: Props) {
     const slideAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        let holdTimer: NodeJS.Timeout;
+        let holdTimer: ReturnType<typeof setTimeout> | undefined;
 
         if (isReady) {
             holdTimer = setTimeout(() => {
@@ -27,7 +27,7 @@ export function SplashScreenOverlay({ onAnimationComplete, isReady }: Props) {
             }, 1500);
         }
         return () => {
-            if (holdTimer) clearTimeout(holdTimer);
+            if (holdTimer !== undefined) clearTimeout(holdTimer);
             slideAnim.stopAnimation();
         };
     }, [isReady, onAnimationComplete, screenWidth, slideAnim]);

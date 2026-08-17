@@ -18,7 +18,6 @@ export const OfflineBanner: React.FC = () => {
             if (!online) {
                 setIsConnected(false);
                 setWasOffline(true);
-                // Slide down
                 Animated.timing(slideAnim, {
                     toValue: 0,
                     duration: 300,
@@ -26,7 +25,6 @@ export const OfflineBanner: React.FC = () => {
                 }).start();
             } else if (online && wasOffline) {
                 setIsConnected(true);
-                // Hold "Back Online" green banner for 2.5s then slide back up
                 setTimeout(() => {
                     Animated.timing(slideAnim, {
                         toValue: -60,
@@ -74,6 +72,10 @@ export const OfflineBanner: React.FC = () => {
 
 const styles = StyleSheet.create({
     banner: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
         zIndex: 9999,
         justifyContent: "center",
         alignItems: "center",

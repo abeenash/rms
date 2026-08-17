@@ -110,8 +110,6 @@ export default function TopTabsLayout() {
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={() => {
-          // We route to our menu, but pass 'direct' instead of a numeric table ID
-          
           router.push({
             pathname: "/tables/[tableId]",
             params: { tableId: "direct", isDirectOrder: 'true' }

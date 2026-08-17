@@ -36,14 +36,12 @@ export default function TableOrderingScreen() {
         setIsExpanded,
         isInitialLoading,
         isSearchLoading,
-        isLoadingMore,
         isLoadingExistingOrder,
         isSubmittingOrder,
         addToCart,
         removeFromCart,
         updateExistingQty,
         removeExistingItem,
-        loadMoreItems,
         handleConfirmOrder,
         handleBackNavigation,
 
@@ -60,17 +58,17 @@ export default function TableOrderingScreen() {
         accentRed: '#EF4444',
     }
 
-    const renderListFooter = () => {
-        if (!isLoadingMore) return null
-        return (
-            <View style={{ paddingVertical: 20, alignItems: "center" }}>
-                <ActivityIndicator size="small" color={colors.accentMain} />
-                <Text style={{ marginTop: 6, color: colors.textMuted, fontSize: 12 }}>
-                    Loading more dishes...
-                </Text>
-            </View>
-        )
-    }
+    // const renderListFooter = () => {
+    //     if (!isLoadingMore) return null
+    //     return (
+    //         <View style={{ paddingVertical: 20, alignItems: "center" }}>
+    //             <ActivityIndicator size="small" color={colors.accentMain} />
+    //             <Text style={{ marginTop: 6, color: colors.textMuted, fontSize: 12 }}>
+    //                 Loading more dishes...
+    //             </Text>
+    //         </View>
+    //     )
+    // }
 
 
     return (
@@ -116,7 +114,7 @@ export default function TableOrderingScreen() {
                     columnWrapperStyle={styles.columnWrapper}
                     contentContainerStyle={styles.menuScrollContent}
                     showsVerticalScrollIndicator={false}
-                    ListFooterComponent={renderListFooter}
+                    // ListFooterComponent={renderListFooter}
                     keyboardShouldPersistTaps="handled"
                     renderItem={({ item }) => (
                         <ProductCard
@@ -126,10 +124,10 @@ export default function TableOrderingScreen() {
                             colors={colors}
                         />
                     )}
-                    onEndReached={loadMoreItems}
-                    onEndReachedThreshold={0.5}
-                    initialNumToRender={8}
-                    maxToRenderPerBatch={8}
+                    // onEndReached={loadMoreItems}
+                    // onEndReachedThreshold={0.5}
+                    initialNumToRender={12}
+                    maxToRenderPerBatch={10}
                     windowSize={5}
                     removeClippedSubviews={Platform.OS === "android"}
                 />

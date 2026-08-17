@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router"
-import { LogOut, Moon, MoreVertical, Search, Store, Sun, User, Users } from "lucide-react-native"
+import { BadgeCheck, LogOut, Moon, MoreVertical, Search, Store, Sun, User, Users } from "lucide-react-native"
 import React, { useCallback, useEffect, useState } from "react"
 import {
   Dimensions,
@@ -26,6 +26,7 @@ import Text from "../../components/AppText"
 import { useCustomAlert } from "../../context/AlertContext"
 import { useAuth } from "../../context/AuthContext"
 import { useTheme } from "../../context/ThemeContext"
+import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "@/utils/networkError"
 
 const { width } = Dimensions.get("window")
 const CARD_WIDTH = (width - 48) / 2
@@ -113,7 +114,9 @@ export default function DashboardScreen() {
 
       setTables(formattedTables)
     } catch (error) {
-      console.error("Failed to fetch live tables:", error)
+      if (isNetworkError(error)) {
+        showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
+      }
     } finally {
       setIsLoading(false)
       setRefreshing(false)
@@ -212,8 +215,16 @@ export default function DashboardScreen() {
                 <User size={20} color="#FFFFFF" />
               </View>
               <View style={styles.staffInfo}>
-                <Text style={[styles.staffLabel, { color: "rgba(255,255,255,0.75)" }]}>Staff member</Text>
-                <Text style={[styles.staffName, { color: "#FFFFFF", fontWeight: "700" }]}>Mohan Rai</Text>
+                <View style={[styles.badge, { backgroundColor: "rgba(255, 255, 255, 0.2)", alignSelf: "flex-start", flexDirection: "row" }]}>
+                  <BadgeCheck size={13} color="#FFFFFF" />
+                  <Text style={[styles.badgeText, { color: "#FFF", fontWeight: "700" }]}>
+                    {user?.roles}
+                  </Text>
+                </View>
+
+                <Text style={[styles.staffName, { color: "#FFFFFF", fontWeight: "700" }]}>
+                  {user?.name.toUpperCase()}
+                </Text>
               </View>
             </View>
 
@@ -228,7 +239,7 @@ export default function DashboardScreen() {
 
           <View style={[styles.storeRow, { borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.2)" }]}>
             <Store size={14} color="#FFFFFF" />
-            <Text style={[styles.storeText, { color: "#FFFFFF", fontWeight: "500" }]}>lekali-sekuwa branch</Text>
+            <Text style={[styles.storeText, { color: "#FFFFFF", fontWeight: "500" }]}>{user?.tenantSlug}</Text>
           </View>
         </View>
 
@@ -568,10 +579,12 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 99,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   badgeText: {
     fontSize: 11,

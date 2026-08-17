@@ -15,11 +15,6 @@ export interface PromoCode {
 }
 
 export const fetchPromoCodesApi = async (tenantSlug: string): Promise<PromoCode[]> => {
-    try {
-        const response = await api.get(`/public/${tenantSlug}/promo-code/list`)
-        return response.data?.data?.content || []
-    } catch (error) {
-        console.error("Failed to fetch promo codes:", error)
-        return []
-    }
+    const response = await api.get(`/public/${tenantSlug}/promo-code/list`)
+    return response.data?.data?.content || []
 }
