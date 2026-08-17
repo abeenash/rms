@@ -4,12 +4,13 @@ import { Text as RNText, StyleSheet, TextProps } from 'react-native'
 export default function Text({ style, ...props }: TextProps) {
 
     const flatStyle = StyleSheet.flatten(style) || {}
+    const weightStr = String(flatStyle.fontWeight || '')
 
     let chosenFont = 'Inter-Regular'
 
-    if (flatStyle.fontWeight === 'bold' || flatStyle.fontWeight === '700') {
+    if (weightStr === 'bold' || weightStr === '700' || weightStr === '800' || weightStr === '900') {
         chosenFont = 'Inter-Bold'
-    } else if (flatStyle.fontWeight === '600' || flatStyle.fontWeight === '500') {
+    } else if (weightStr === '600' || weightStr === '500' || weightStr === 'semibold') {
         chosenFont = 'Inter-Semibold'
     }
     return (
@@ -18,7 +19,6 @@ export default function Text({ style, ...props }: TextProps) {
             style={[
                 {
                     fontFamily: chosenFont,
-                    paddingRight: 4
                 },
 
                 style,
