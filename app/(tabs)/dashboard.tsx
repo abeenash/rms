@@ -221,12 +221,12 @@ export default function DashboardScreen() {
                 <View style={[styles.badge, { backgroundColor: "rgba(255, 255, 255, 0.2)", alignSelf: "flex-start", flexDirection: "row" }]}>
                   <BadgeCheck size={13} color="#FFFFFF" />
                   <Text style={[styles.badgeText, { color: "#FFF", fontWeight: "700" }]}>
-                    {user?.roles}
+                    {user?.roles ? (Array.isArray(user.roles) ? user.roles.join(", ") : String(user.roles)) : "STAFF"}
                   </Text>
                 </View>
 
                 <Text style={[styles.staffName, { color: "#FFFFFF", fontWeight: "700" }]}>
-                  {user?.name.toUpperCase()}
+                  {user?.name ? user.name.toUpperCase() : "STAFF"}
                 </Text>
               </View>
             </View>
