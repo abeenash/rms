@@ -35,9 +35,15 @@ const LoginScreen = () => {
   const [isPasswordFocused, setIsPasswordFocused] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  const { login } = useAuth()
+  const { login, token, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const { showAlert } = useCustomAlert()
+
+  useEffect(() => {
+    if (!authLoading && token) {
+      router.replace("/dashboard");
+    }
+  }, [authLoading, token, router]);
 
   const handleLogin = async () => {
     const trimmedEmail = email.trim();
