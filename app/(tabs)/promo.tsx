@@ -23,7 +23,10 @@ export default function PromoScreen() {
   const pulseOpacity = useSharedValue(0.4)
 
   const loadPromos = useCallback(async (showLoader = true) => {
-    if (!tenantSlug) return
+    if (!tenantSlug) {
+      setLoading(false)
+      return
+    }
     try {
       if (showLoader) {
         setLoading(true)
@@ -39,7 +42,7 @@ export default function PromoScreen() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [tenantSlug, pulseOpacity])
+  }, [tenantSlug, pulseOpacity, showAlert])
 
   useEffect(() => {
     loadPromos()

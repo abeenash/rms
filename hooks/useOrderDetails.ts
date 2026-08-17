@@ -73,7 +73,10 @@ export function useOrderDetails() {
 
     // Load order details
     const loadOrderData = useCallback(async () => {
-        if (!tenantSlug || !orderId) return;
+        if (!tenantSlug || !orderId) {
+            setIsLoading(false);
+            return;
+        }
         try {
             setIsLoading(true);
             const res = await fetchOrderByIdApi(tenantSlug, orderId);

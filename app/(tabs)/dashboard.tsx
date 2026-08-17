@@ -101,7 +101,10 @@ export default function DashboardScreen() {
   }))
 
   const loadTables = useCallback(async (showLoader = true) => {
-    if (!tenantSlug) return
+    if (!tenantSlug) {
+      setIsLoading(false)
+      return
+    }
 
     try {
       if (showLoader) setIsLoading(true)
@@ -121,7 +124,7 @@ export default function DashboardScreen() {
       setIsLoading(false)
       setRefreshing(false)
     }
-  }, [tenantSlug])
+  }, [tenantSlug, showAlert])
 
   // i guess initial fetch not needed. it will slow down the response.
   // useEffect(() => {

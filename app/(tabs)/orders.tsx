@@ -42,7 +42,10 @@ export default function OrdersScreen() {
   const [activeFilter, setActiveFilter] = useState<"all" | OrderStatus>("all");
 
   const loadOrders = useCallback(async (showLoader = true) => {
-    if (!tenantSlug) return
+    if (!tenantSlug) {
+      setIsLoading(false)
+      return
+    }
     try {
       if (showLoader) {
         setIsLoading(true)
@@ -59,11 +62,11 @@ export default function OrdersScreen() {
       setIsLoading(false)
       setRefreshing(false);
     }
-  }, [tenantSlug])
+  }, [tenantSlug, pulseOpacity, showAlert])
 
   useEffect(() => {
     loadOrders(true);
-  }, []);
+  }, [loadOrders]);
 
   useFocusEffect(
     useCallback(() => {
