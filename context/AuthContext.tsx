@@ -46,6 +46,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             } catch (error) {
                 console.error("Failed to restore auth session:", error)
+                try {
+                    await SecureStore.deleteItemAsync('access_token')
+                    await SecureStore.deleteItemAsync('user_data')
+                } catch (e) {
+                    // Ignore cleanup failure
+                }
             } finally {
                 setIsLoading(false)
             }
