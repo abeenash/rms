@@ -237,6 +237,7 @@ export function useOrderDetails() {
 
     // Payment status selection modal --> this will be removed later because "💵CASH" and "👝DIGITAL_WALLET" is enough. Also, to avoid confusion for the waiter.
     const handlePaymentStatusSelect = useCallback(() => {
+        if (!tenantSlug || !orderId) return;
         if (isOrderFinalized) {
             showAlert(
                 "🔒 Payment Locked",
@@ -253,11 +254,11 @@ export function useOrderDetails() {
                     text: "PAID (Delivers Order)",
                     onPress: async () => {
                         try {
-                            await updatePaymentStatusApi(tenantSlug!, orderId!, {
+                            await updatePaymentStatusApi(tenantSlug, orderId, {
                                 paymentStatus: "PAID",
                                 paymentMethod: "CASH",
                             });
-                            await updateOrderStatusApi(tenantSlug!, orderId!, "DELIVERED");
+                            await updateOrderStatusApi(tenantSlug, orderId, "DELIVERED");
                             setPaymentStatus("PAID");
                             setOrderStatus("DELIVERED");
                             showToast("Payment settled! Order delivered.");
@@ -271,7 +272,7 @@ export function useOrderDetails() {
                     text: "PENDING",
                     onPress: async () => {
                         try {
-                            await updatePaymentStatusApi(tenantSlug!, orderId!, {
+                            await updatePaymentStatusApi(tenantSlug, orderId, {
                                 paymentStatus: "PENDING",
                                 paymentMethod: "CASH",
                             });
@@ -290,8 +291,7 @@ export function useOrderDetails() {
 
     // Settle payment (Cash / Digital)
     const handleSettlePayment = useCallback(async (method: string) => {
-        if (isCancelled) { return; }
-        if (isPaid) { return; }
+        if (isCancelled || isPaid || !tenantSlug || !orderId) return;
         if (hasPendingItems) {
             showAlert("Pending Items", "Confirm the added items before settling payment.")
             return;
@@ -300,13 +300,13 @@ export function useOrderDetails() {
         const paymentMethod = method === "Cash" ? "CASH" : "DIGITAL_WALLET";
 
         try {
-            await updatePaymentStatusApi(tenantSlug!, orderId!, {
+            await updatePaymentStatusApi(tenantSlug, orderId, {
                 paymentStatus: "PAID",
                 paymentMethod,
                 manualDiscount: parsedManualDiscount || 0,
             });
 
-            await updateOrderStatusApi(tenantSlug!, orderId!, "DELIVERED");
+            await updateOrderStatusApi(tenantSlug, orderId, "DELIVERED");
 
             setPaymentStatus("PAID");
             setOrderStatus("DELIVERED");
@@ -448,13 +448,14 @@ export function useOrderDetails() {
 
     // Apply promo code logic — backend is the source of truth for validation & discount
     const handleApplyPromo = useCallback(async () => {
+        if (!tenantSlug || !orderId) return;
         if (!selectedPromo) {
             showAlert("No Promo Selected", "Please select a promo code from the list first.");
             return;
         }
 
         try {
-            const updatedOrder = await applyPromoApi(tenantSlug!, orderId!, selectedPromo.code);
+            const updatedOrder = await applyPromoApi(tenantSlug, orderId, selectedPromo.code);
             setAppliedPromo(updatedOrder.promoCode || selectedPromo.code);
             setPromoDiscountVal(updatedOrder.promoDiscount || 0);
             setSelectedPromo(null);
@@ -470,7 +471,7 @@ export function useOrderDetails() {
     }, [selectedPromo, tenantSlug, orderId, showAlert]);
 
     const handleClearPromo = useCallback(() => {
-        if (!appliedPromo) return;
+        if (!appliedPromo || !tenantSlug || !orderId) return;
         showAlert(
             "Remove Promo",
             `Remove promo code '${appliedPromo}' from this order?`,
@@ -481,7 +482,7 @@ export function useOrderDetails() {
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            await removePromoApi(tenantSlug!, orderId!);
+                            await removePromoApi(tenantSlug, orderId);
                             setAppliedPromo(null);
                             setPromoDiscountVal(0);
                             showToast("Promo removed");
