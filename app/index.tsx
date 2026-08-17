@@ -258,12 +258,13 @@ const LoginScreen = () => {
           </View>
 
           <TouchableOpacity
-            style={styles.button}
+            style={[styles.button, isLoading && { opacity: 0.7 }]}
             activeOpacity={0.8}
             onPress={handleLogin}
+            disabled={isLoading}
           >
             <View style={styles.buttonContent}>
-              <Text style={styles.buttonText}>Log In</Text>
+              <Text style={styles.buttonText}>{isLoading ? "Logging in..." : "Log In"}</Text>
               <LogIn size={22} color="#FFFFFF" style={styles.buttonIcon} />
             </View>
           </TouchableOpacity>
