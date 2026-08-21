@@ -1,8 +1,9 @@
 import { ChefHat, FileText, X } from "lucide-react-native"
-import React from "react"
+import React, { useMemo } from "react"
 import { Modal, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native"
 
 import { Order, OrderItem } from "@/services/orderService"
+import { consolidateOrderItems } from "@/utils/consolidateOrderItems"
 import { formatOrderTime } from "../../utils/billTemplates"
 import Text from "../AppText"
 
@@ -37,6 +38,8 @@ export function InvoiceModal({
     onPrintInvoice,
     onPrintKOT,
 }: InvoiceModalProps) {
+    const consolidated = useMemo(() => consolidateOrderItems(orderItems), [orderItems]);
+
     return (
         <Modal
             visible={visible}
@@ -77,12 +80,12 @@ export function InvoiceModal({
                     <View style={styles.invoiceLineDivider} />
 
                     <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
-                        {orderItems.map((item) => (
+                        {consolidated.map((item) => (
                             <View key={item.id} style={styles.invoiceProductItemRow}>
                                 <Text style={[styles.invoiceItemNameText, { flex: 2 }]}>{item.itemName}</Text>
                                 <Text style={[styles.invoiceItemQtyText, { flex: 0.5, textAlign: "center" }]}>{item.quantity}</Text>
                                 <Text style={[styles.invoiceItemRateText, { flex: 1, textAlign: "right" }]}>NPR {item.price}</Text>
-                                <Text style={[styles.invoiceItemAmountText, { flex: 1.2, textAlign: "right" }]}>NPR {item.price * item.quantity}</Text>
+                                <Text style={[styles.invoiceItemAmountText, { flex: 1.2, textAlign: "right" }]}>NPR {item.totalPrice}</Text>
                             </View>
                         ))}
                     </ScrollView>

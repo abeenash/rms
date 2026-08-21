@@ -114,7 +114,6 @@ export default function TableOrderingScreen() {
                     columnWrapperStyle={styles.columnWrapper}
                     contentContainerStyle={styles.menuScrollContent}
                     showsVerticalScrollIndicator={false}
-                    // ListFooterComponent={renderListFooter}
                     keyboardShouldPersistTaps="handled"
                     renderItem={({ item }) => (
                         <ProductCard
@@ -124,8 +123,6 @@ export default function TableOrderingScreen() {
                             colors={colors}
                         />
                     )}
-                    // onEndReached={loadMoreItems}
-                    // onEndReachedThreshold={0.5}
                     initialNumToRender={12}
                     maxToRenderPerBatch={10}
                     windowSize={5}

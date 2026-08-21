@@ -22,11 +22,11 @@ import Animated, {
 } from "react-native-reanimated"
 
 import { DiningTable, fetchDiningTablesApi } from "@/services/tableService"
+import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "@/utils/networkError"
 import Text from "../../components/AppText"
 import { useCustomAlert } from "../../context/AlertContext"
 import { useAuth } from "../../context/AuthContext"
 import { useTheme } from "../../context/ThemeContext"
-import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "@/utils/networkError"
 
 const { width } = Dimensions.get("window")
 const CARD_WIDTH = (width - 48) / 2
@@ -101,7 +101,10 @@ export default function DashboardScreen() {
   }))
 
   const loadTables = useCallback(async (showLoader = true) => {
-    if (!tenantSlug) return
+    if (!tenantSlug) {
+      setIsLoading(false)
+      return
+    }
 
     try {
       if (showLoader) setIsLoading(true)
@@ -121,12 +124,7 @@ export default function DashboardScreen() {
       setIsLoading(false)
       setRefreshing(false)
     }
-  }, [tenantSlug])
-
-  // i guess initial fetch not needed. it will slow down the response.
-  // useEffect(() => {
-  //   loadTables()
-  // }, [loadTables])
+  }, [tenantSlug, showAlert])
 
   useFocusEffect(
     useCallback(() => {
@@ -207,43 +205,8 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textMain} />}
       >
-        {/* Profile Header */}
-        <View style={[styles.profileHeader, { backgroundColor: isDark ? "#1E293B" : "#6366F1" }]}>
-          <View style={styles.profileRow}>
-            <View style={styles.profileLeft}>
-              <View style={[styles.avatarBox, { backgroundColor: "rgba(255,255,255,0.15)" }]}>
-                <User size={20} color="#FFFFFF" />
-              </View>
-              <View style={styles.staffInfo}>
-                <View style={[styles.badge, { backgroundColor: "rgba(255, 255, 255, 0.2)", alignSelf: "flex-start", flexDirection: "row" }]}>
-                  <BadgeCheck size={13} color="#FFFFFF" />
-                  <Text style={[styles.badgeText, { color: "#FFF", fontWeight: "700" }]}>
-                    {user?.roles}
-                  </Text>
-                </View>
-
-                <Text style={[styles.staffName, { color: "#FFFFFF", fontWeight: "700" }]}>
-                  {user?.name.toUpperCase()}
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={toggleMenu}
-              style={styles.threeDotsButton}
-            >
-              <MoreVertical size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={[styles.storeRow, { borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.2)" }]}>
-            <Store size={14} color="#FFFFFF" />
-            <Text style={[styles.storeText, { color: "#FFFFFF", fontWeight: "500" }]}>{user?.tenantSlug}</Text>
-          </View>
-        </View>
-
         <View style={styles.contentPadding}>
+          {/* Search Table Bar */}
           <View style={[styles.searchContainer, { backgroundColor: colors.searchBg }]}>
             <Search size={18} color={colors.textMuted} style={styles.searchIcon} />
             <TextInput
@@ -257,10 +220,24 @@ export default function DashboardScreen() {
             />
           </View>
 
-          <Text style={[styles.title, { color: colors.textMain, fontWeight: "700" }]}>
-            Select a Table
-          </Text>
+          {/* Section Header with Right-Aligned Action Button */}
+          <View style={styles.titleRow}>
+            <Text style={[styles.title, { color: colors.textMain, fontWeight: "700" }]}>
+              Select a Table
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={toggleMenu}
+              style={[
+                styles.threeDotsButton,
+                { backgroundColor:"#6366F1" }
+              ]}
+            >
+              <MoreVertical size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
 
+          {/* Table Metrics */}
           {isLoading ? (
             <View style={styles.metricsContainer}>
               <Animated.View style={[styles.metricsSkeleton, { backgroundColor: colors.skeletonBlock }, animatedPulseStyle]} />
@@ -280,6 +257,7 @@ export default function DashboardScreen() {
             </View>
           )}
 
+          {/* Dining Table Grid */}
           <View style={styles.grid}>
             {isLoading
               ? Array.from({ length: 4 }).map((_, index) => (
@@ -332,7 +310,7 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
 
-      {/* Transparent Modal for Popover Dropdown */}
+      {/* Dimming Backdrop Overlay & Staff Card Popover */}
       <Modal
         visible={isMenuOpen}
         transparent
@@ -344,7 +322,7 @@ export default function DashboardScreen() {
           activeOpacity={1}
           onPress={() => closeMenu()}
         >
-          <Pressable style={styles.popoverPositioner} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={styles.modalContentWrapper} onPress={(e) => e.stopPropagation()}>
             <Animated.View
               style={[
                 styles.dropdownPopover,
@@ -355,6 +333,35 @@ export default function DashboardScreen() {
                 }
               ]}
             >
+              {/* Staff Details Header */}
+              <View style={styles.staffCardHeader}>
+                <View style={[styles.avatarBox, { backgroundColor: "#6366F1" }]}>
+                  <User size={20} color="#FFFFFF" />
+                </View>
+                <View style={styles.staffDetailsColumn}>
+                  <Text style={[styles.staffNameText, { color: colors.textMain, fontWeight: "700" }]}>
+                    {user?.name ? user.name.toUpperCase() : "STAFF"}
+                  </Text>
+
+                  <View style={styles.roleBadgeContainer}>
+                    <BadgeCheck size={11} color="#6366F1" />
+                    <Text style={styles.roleBadgeText}>
+                      {user?.roles ? (Array.isArray(user.roles) ? user.roles.join(", ") : String(user.roles)) : "STAFF"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.storeSlugContainer}>
+                    <Store size={11} color={colors.textMuted} />
+                    <Text style={[styles.storeSlugText, { color: colors.textMuted }]}>
+                      {user?.tenantSlug}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={[styles.dropdownDividerLine, { backgroundColor: colors.popoverBorder }]} />
+
+              {/* Dark Mode Toggle */}
               <TouchableOpacity
                 activeOpacity={0.6}
                 onPress={() => {
@@ -375,6 +382,7 @@ export default function DashboardScreen() {
 
               <View style={[styles.dropdownDividerLine, { backgroundColor: colors.popoverBorder }]} />
 
+              {/* Log Out Button */}
               <TouchableOpacity
                 activeOpacity={0.6}
                 onPress={() => {
@@ -401,94 +409,104 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingBottom: 40,
+    paddingTop: 1,
   },
   contentPadding: {
-    padding: 16,
+    padding: 15,
   },
-  profileHeader: {
-    padding: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  profileRow: {
+  titleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 16,
   },
-  profileLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
-  },
-  avatarBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  staffLabel: {
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  staffName: {
-    fontSize: 18,
-    letterSpacing: -0.2,
-  },
-  staffInfo: {
-    justifyContent: "center",
-  },
-  storeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  storeText: {
-    fontSize: 13,
+  title: {
+    fontSize: 22,
+    letterSpacing: -0.5,
   },
   threeDotsButton: {
     width: 38,
     height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: 99,
     justifyContent: "center",
     alignItems: "center",
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 100,
+    paddingRight: 16,
   },
-  popoverPositioner: {
-    position: "absolute",
-    top: 56,
-    right: 20,
+  modalContentWrapper: {
+    width: 230,
   },
   dropdownPopover: {
-    width: 150,
-    borderRadius: 14,
+    width: "100%",
+    borderRadius: 16,
     borderWidth: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  staffCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingBottom: 8,
+  },
+  avatarBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  staffDetailsColumn: {
+    flex: 1,
+    gap: 2,
+  },
+  staffNameText: {
+    fontSize: 14,
+    letterSpacing: -0.2,
+  },
+  roleBadgeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(99, 102, 241, 0.12)",
+    alignSelf: "flex-start",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  roleBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#6366F1",
+    textTransform: "uppercase",
+  },
+  storeSlugContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 1,
+  },
+  storeSlugText: {
+    fontSize: 11,
+    fontWeight: "500",
   },
   menuRowItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
     borderRadius: 8,
   },
   menuItemLabelText: {
@@ -497,12 +515,7 @@ const styles = StyleSheet.create({
   },
   dropdownDividerLine: {
     height: 1,
-    marginVertical: 2,
-  },
-  title: {
-    fontSize: 22,
-    letterSpacing: -0.5,
-    marginBottom: 16,
+    marginVertical: 4,
   },
   metricsContainer: {
     flexDirection: "row",
@@ -538,8 +551,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 46,
-    marginTop: 4,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   searchIcon: {
     marginRight: 8,

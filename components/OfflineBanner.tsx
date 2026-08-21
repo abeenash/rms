@@ -9,7 +9,13 @@ export const OfflineBanner: React.FC = () => {
     const insets = useSafeAreaInsets()
     const [isConnected, setIsConnected] = useState<boolean | null>(true);
     const [wasOffline, setWasOffline] = useState<boolean>(false);
-    const slideAnim = useRef(new Animated.Value(-60)).current; // Initially hidden above screen
+    const hiddenOffset = -(60 + (insets.top || 0));
+    const slideAnim = useRef(new Animated.Value(hiddenOffset)).current; // Initially hidden above screen
+
+    const wasOfflineRef = useRef(wasOffline);
+    useEffect(() => {
+        wasOfflineRef.current = wasOffline;
+    }, [wasOffline]);
 
     useEffect(() => {
         const unsubscribe = NetInfo.addEventListener((state) => {
@@ -23,11 +29,11 @@ export const OfflineBanner: React.FC = () => {
                     duration: 300,
                     useNativeDriver: true,
                 }).start();
-            } else if (online && wasOffline) {
+            } else if (online && wasOfflineRef.current) {
                 setIsConnected(true);
                 setTimeout(() => {
                     Animated.timing(slideAnim, {
-                        toValue: -60,
+                        toValue: hiddenOffset,
                         duration: 300,
                         useNativeDriver: true,
                     }).start(() => setWasOffline(false));
@@ -36,7 +42,7 @@ export const OfflineBanner: React.FC = () => {
         });
 
         return () => unsubscribe();
-    }, [wasOffline, slideAnim]);
+    }, [slideAnim, hiddenOffset]);
 
     if (isConnected && !wasOffline) return null;
 
