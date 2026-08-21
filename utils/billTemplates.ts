@@ -1,4 +1,5 @@
 import { Order, OrderItem } from "@/services/orderService";
+import { consolidateOrderItems } from "./consolidateOrderItems";
 
 // Safe Date Formatter Helper
 export const formatOrderTime = (isoString?: string) => {
@@ -25,6 +26,7 @@ export const generatePOSHtml = (
   const displayOrderNum = orderData?.orderNumber || `ORD-${orderId}`;
   const tableNum = orderData?.tableNumber ? `Table ${orderData.tableNumber}` : "Counter";
   const custName = orderData?.customerName || "Walk-in Customer";
+  const consolidated = consolidateOrderItems(orderItems);
 
   return `
     <html>
@@ -74,11 +76,11 @@ export const generatePOSHtml = (
             </tr>
           </thead>
           <tbody>
-            ${orderItems.map(item => `
+            ${consolidated.map(item => `
               <tr>
                 <td>${item.itemName}</td>
                 <td class="text-center">${item.quantity}</td>
-                <td class="text-right bold">Rs ${item.price * item.quantity}</td>
+                <td class="text-right bold">Rs ${item.totalPrice}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -121,6 +123,7 @@ export const generateInvoiceHtml = (
   const displayOrderNum = orderData?.orderNumber || `ORD-${orderId}`;
   const tableNum = orderData?.tableNumber ? `Table ${orderData.tableNumber}` : "Counter";
   const custName = orderData?.customerName || "Walk-in Customer";
+  const consolidated = consolidateOrderItems(orderItems);
 
   return `
     <html>
@@ -171,12 +174,12 @@ export const generateInvoiceHtml = (
             </tr>
           </thead>
           <tbody>
-            ${orderItems.map(item => `
+            ${consolidated.map(item => `
               <tr>
                 <td>${item.itemName}</td>
                 <td class="text-center">${item.quantity}</td>
                 <td class="text-right">Rs ${item.price}</td>
-                <td class="text-right bold">Rs ${item.price * item.quantity}</td>
+                <td class="text-right bold">Rs ${item.totalPrice}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -205,6 +208,7 @@ export const generateKOTHtml = (
   const currentDateTime = formatOrderTime(orderData?.orderedAt);
   const displayOrderNum = orderData?.orderNumber || `ORD-${orderId}`;
   const tableNum = orderData?.tableNumber ? `Table ${orderData.tableNumber}` : "Counter";
+  const consolidated = consolidateOrderItems(orderItems);
 
   return `
     <html>
@@ -249,7 +253,7 @@ export const generateKOTHtml = (
             </tr>
           </thead>
           <tbody>
-            ${orderItems.map(item => `
+            ${consolidated.map(item => `
               <tr>
                 <td>${item.itemName}</td>
                 <td style="text-align: right;">${item.quantity}</td>

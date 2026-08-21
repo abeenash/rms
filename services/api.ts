@@ -5,7 +5,9 @@ import * as SecureStore from 'expo-secure-store';
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
 if (!API_BASE_URL) {
-    console.warn("⚠️ EXPO_PUBLIC_API_BASE_URL is not defined in .env file!")
+    console.error("🔴 FATAL: EXPO_PUBLIC_API_BASE_URL is not defined! API requests will fail.")
+} else {
+    console.log(`✅ API configured: ${API_BASE_URL.replace(/\/api\/v\d+$/, '/...')}`)
 }
 
 const api = axios.create({

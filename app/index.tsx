@@ -27,6 +27,8 @@ import { useTheme } from "../context/ThemeContext";
 import { presentLiveAlert, requestLiveAlertsPermission } from "../services/localNotificationService";
 import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "../utils/networkError";
 
+const ALLOWED_ROLES = ["WAITER", "STAFF"];
+
 const LoginScreen = () => {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -35,15 +37,19 @@ const LoginScreen = () => {
   const [isPasswordFocused, setIsPasswordFocused] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  const { login, token, isLoading: authLoading } = useAuth()
+  const { login, token, user, logout, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const { showAlert } = useCustomAlert()
 
   useEffect(() => {
     if (!authLoading && token) {
+      if (user && !user.roles?.some((r: string) => ALLOWED_ROLES.includes(r))) {
+        logout();
+        return;
+      }
       router.replace("/dashboard");
     }
-  }, [authLoading, token, router]);
+  }, [authLoading, token, user, router, logout]);
 
   const handleLogin = async () => {
     const trimmedEmail = email.trim();
@@ -53,7 +59,14 @@ const LoginScreen = () => {
     }
     try {
       setIsLoading(true);
-      await login({ email: trimmedEmail, password });
+      const loggedInUser = await login({ email: trimmedEmail, password });
+
+      if (!loggedInUser.roles?.some((r: string) => ALLOWED_ROLES.includes(r))) {
+        showAlert("COMING SOON!", "This role is not yet supported. Please contact your administrator.");
+        await logout();
+        return;
+      }
+
       try {
         const allowed = await requestLiveAlertsPermission();
         if (allowed) {
@@ -214,7 +227,7 @@ const LoginScreen = () => {
               >
                 Password
               </Text>
-              <TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/forgot-password')}>
                 <Text style={styles.forgotPasswordText}>Forgot?</Text>
               </TouchableOpacity>
             </View>

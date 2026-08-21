@@ -52,20 +52,10 @@ export function useTableOrdering() {
     //ui and control states
     const [search, setSearch] = useState("")
     const [selectedCategory, setSelectedCategory] = useState("All")
-    // const [categories, setCategories] = useState<string[]>(["All"])
-    // const [menuItems, setMenuItems] = useState<UIItem[]>([])
 
     //loaders
-    // const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
-    // const [isSearchLoading, setIsSearchLoading] = useState<boolean>(false)
     const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false)
     const [isLoadingExistingOrder, setIsLoadingExistingOrder] = useState<boolean>(false)
-
-    //for pagination and infinite scroll state
-    // const [page, setPage] = useState<number>(0)
-    // const [hasMore, setHasMore] = useState<boolean>(true)
-    // const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
-    // const isInitialMount = useRef<boolean>(true)
 
     //for orders and cart
     const [cart, setCart] = useState<CartState>({})
@@ -108,46 +98,6 @@ export function useTableOrdering() {
         loadExistingOrder()
     }, [isOccupied, currentOrderId, tenantSlug])
 
-    //loading the screen (initializing the menu)
-    // useEffect(() => {
-    //     const loadInitialData = async () => {
-    //         if (!tenantSlug) return
-
-    //         try {
-    //             setIsInitialLoading(true)
-    //             const [rawMenus, rawItems] = await Promise.all([
-    //                 fetchMenusApi(tenantSlug),
-    //                 fetchMenuItemsApi(tenantSlug, 0, 10, "")
-    //             ])
-
-    //             const categoryNames = rawMenus.filter((m) => m.active).map((m) => m.menuName)
-    //             setCategories(["All", ...new Set(categoryNames)])
-
-    //             const itemsList = rawItems?.content || []
-    //             const formattedItems: UIItem[] = itemsList
-    //                 .filter((item) => item.active)
-    //                 .map((item) => ({
-    //                     id: String(item.id),
-    //                     name: item.name,
-    //                     price: item.price,
-    //                     category: item.menuName,
-    //                     description: item.description || "",
-    //                     image: item.imageUrl
-    //                 }))
-
-    //             setMenuItems(formattedItems)
-    //             setPage(0)
-    //             const isLast = rawItems.lastPage ?? rawItems.last ?? (1 >= rawItems.totalPages)
-    //             setHasMore(!isLast && itemsList.length > 0)
-    //         } catch (error) {
-    //             console.error("Failed to load initial menu data:", error)
-    //         } finally {
-    //             setIsInitialLoading(false)
-    //         }
-    //     }
-    //     loadInitialData()
-    // }, [tenantSlug])
-
     const { catalogItems, isLoading: isCatalogLoading } = useCatalogItems(tenantSlug)
     const categoriesQuery = useMenuCategories(tenantSlug)
     const { searchItems, isLoading: isSearchFetching } = useMenuSearch(tenantSlug, search)
@@ -171,46 +121,6 @@ export function useTableOrdering() {
         return sourceItems.filter((item) => selectedCategory === "All" || item.category === selectedCategory)
     }, [sourceItems, selectedCategory, isSearchActive])
 
-    //debounce effect for the search
-    // useEffect(() => {
-    //     if (isInitialMount.current) {
-    //         isInitialMount.current = false
-    //         return
-    //     }
-
-    //     setIsSearchLoading(true)
-
-    //     const timer = setTimeout(async () => {
-    //         if (!tenantSlug) {
-    //             setIsSearchLoading(false)
-    //             return
-    //         }
-    //         try {
-    //             const rawItems = await fetchMenuItemsApi(tenantSlug, 0, 10, search)
-    //             const itemsList = rawItems?.content || []
-    //             const formattedItems: UIItem[] = itemsList
-    //                 .filter((item) => item.active)
-    //                 .map((item) => ({
-    //                     id: String(item.id),
-    //                     name: item.name,
-    //                     price: item.price,
-    //                     category: item.menuName,
-    //                     description: item.description || "",
-    //                     image: item.imageUrl
-    //                 }))
-    //             setMenuItems(formattedItems)
-    //             setPage(0)
-    //             const isLast = rawItems.lastPage ?? rawItems.last ?? (1 >= rawItems.totalPages)
-    //             setHasMore(!isLast && itemsList.length > 0)
-    //         } catch (error) {
-    //             console.error("Failed to search menu items:", error)
-    //         } finally {
-    //             setIsSearchLoading(false)
-    //         }
-    //     }, 400)
-    //     return () => clearTimeout(timer)
-    // }, [search, tenantSlug])
-
     //active order search by tableId
     useEffect(() => {
         const loadExistingOrder = async () => {
@@ -228,7 +138,6 @@ export function useTableOrdering() {
 
                     // Only handle confirmed active orders
                     if (orderData.status?.toUpperCase() === "CONFIRMED" && Array.isArray(orderData.items)) {
-                        // ⚡ Store order number (e.g. "ORD-AE4AFD3B") or fall back to order id
                         setActiveOrderId(orderData.id)
                         setActiveOrderNumber(orderData.orderNumber || String(orderData.id))
 
@@ -259,44 +168,6 @@ export function useTableOrdering() {
         }
         loadExistingOrder()
     }, [tenantSlug, tableId, isDirect])
-
-    //infinite pagination
-    // const loadMoreItems = useCallback(async () => {
-    //     if (!hasMore || isLoadingMore || isInitialLoading || isSearchLoading || !tenantSlug) return
-
-    //     try {
-    //         setIsLoadingMore(true)
-    //         const nextPage = page + 1
-    //         const rawItems = await fetchMenuItemsApi(tenantSlug, nextPage, 10, search)
-    //         const itemsList = rawItems?.content || []
-
-    //         const newFormatted: UIItem[] = itemsList
-    //             .filter((item) => item.active)
-    //             .map((item) => ({
-    //                 id: String(item.id),
-    //                 name: item.name,
-    //                 price: item.price,
-    //                 category: item.menuName,
-    //                 description: item.description || "",
-    //                 image: item.imageUrl
-    //             }))
-
-    //         setMenuItems((prev) => {
-    //             const existingIds = new Set(prev.map((p) => p.id))
-    //             const uniqueNewItems = newFormatted.filter((p) => !existingIds.has(p.id))
-    //             return [...prev, ...uniqueNewItems]
-    //         })
-
-    //         setPage(nextPage)
-
-    //         const isLast = rawItems.lastPage ?? rawItems.last ?? (nextPage + 1 >= rawItems.totalPages)
-    //         setHasMore(!isLast && itemsList.length > 0)
-    //     } catch (error) {
-    //         console.error("Failed to load more menu items:", error)
-    //     } finally {
-    //         setIsLoadingMore(false)
-    //     }
-    // }, [hasMore, isLoadingMore, isInitialLoading, isSearchLoading, tenantSlug, page, search])
 
     //the cart actions [addToCart, removeFromCart, updateExistingQty, removeExistingItem]
     const addToCart = useCallback((itemToAdd: UIItem) => {
@@ -367,23 +238,37 @@ export function useTableOrdering() {
     const removeExistingItem = useCallback(async (itemId: string | number, name: string) => {
         if (!tenantSlug || !targetOrderId) return
 
+        const targetItem = existingOrderItems.find((i) => i.id === String(itemId))
+        if (!targetItem) return
+
+        const matchingItems = existingOrderItems.filter(
+            (i) => i.name === targetItem.name && i.price === targetItem.price
+        )
+
+        const label = matchingItems.length > 1
+            ? `"${name}" (all ${matchingItems.length} entries)`
+            : `"${name}"`
+
         showAlert(
             "⚠️ Remove Item",
-            `Remove "${name}" from Order #${displayOrderNumber}?`,
+            `Remove ${label} from Order #${displayOrderNumber}?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
                     text: "Remove",
                     style: "destructive",
                     onPress: async () => {
+                        const matchingIds = new Set(matchingItems.map((i) => i.id))
                         let originalList: ExistingItem[] = []
                         setExistingOrderItems((prev) => {
                             originalList = prev
-                            return prev.filter(item => item.id !== itemId)
+                            return prev.filter(item => !matchingIds.has(item.id))
                         })
 
                         try {
-                            await deleteOrderItemApi(tenantSlug, targetOrderId, itemId)
+                            for (const item of matchingItems) {
+                                await deleteOrderItemApi(tenantSlug, targetOrderId, item.id)
+                            }
                             setModifiedItemNames((prev) => new Set(prev).add(name))
                         } catch (error: any) {
                             if (isNetworkError(error)) {
@@ -398,7 +283,7 @@ export function useTableOrdering() {
                 }
             ],
         )
-    }, [tenantSlug, targetOrderId, displayOrderNumber, showAlert])
+    }, [tenantSlug, targetOrderId, displayOrderNumber, existingOrderItems, showAlert])
 
     //back navigation action with live sync summary feedback
     const handleBackNavigation = useCallback(() => {
@@ -437,10 +322,6 @@ export function useTableOrdering() {
 
         setIsSubmittingOrder(true)
 
-        // const activeKey = idempotencyKey || generateIdempotencyKey()
-        // if (!idempotencyKey) {
-        //     setIdempotencyKey(activeKey)
-        // }
         const newIdempotencyKey = generateIdempotencyKey();
 
         const targetOrderId = currentOrderId || activeOrderId;
@@ -506,7 +387,6 @@ export function useTableOrdering() {
                 responseOrder = apiRes.data
             }
 
-            // setIdempotencyKey(null)
             setCart({})
 
             showAlert(
@@ -525,7 +405,6 @@ export function useTableOrdering() {
             } else {
                 console.error("Failed to process order:", error)
                 const statusCode = error?.response?.status;
-                // const serverMsg = error?.response?.data?.message || "Could not complete request. Please try again."
                 const serverMsg =
                     error?.response?.data?.message ||
                     (error?.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||

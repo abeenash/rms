@@ -365,16 +365,31 @@ export function useOrderDetails() {
             if (isOrderFinalized) showAlert("Order Locked", "Cannot remove items from a finalized order.");
             return;
         }
-        showAlert("⚠️ Remove Item", `Remove "${name}" from order?`, [
+
+        const targetItem = orderItems.find((i) => String(i.id) === String(itemId));
+        if (!targetItem) return;
+
+        const matchingItems = orderItems.filter(
+            (i) => i.itemName === targetItem.itemName && i.price === targetItem.price
+        );
+
+        const label = matchingItems.length > 1
+            ? `"${name}" (all ${matchingItems.length} entries)`
+            : `"${name}"`;
+
+        showAlert("⚠️ Remove Item", `Remove ${label} from order?`, [
             { text: "Cancel", style: "cancel" },
             {
                 text: "Yes, Delete",
                 style: "destructive",
                 onPress: async () => {
                     const prevItems = orderItems;
-                    setOrderItems((prev) => prev.filter((item) => String(item.id) !== String(itemId)));
+                    const matchingIds = new Set(matchingItems.map((i) => String(i.id)));
+                    setOrderItems((prev) => prev.filter((item) => !matchingIds.has(String(item.id))));
                     try {
-                        await deleteOrderItemApi(tenantSlug, orderId, itemId);
+                        for (const item of matchingItems) {
+                            await deleteOrderItemApi(tenantSlug, orderId, item.id);
+                        }
                     } catch (error) {
                         setOrderItems(prevItems);
                         if (isNetworkError(error)) {

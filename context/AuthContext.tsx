@@ -3,12 +3,41 @@ import { loginApi, LoginPayload, UserResponse } from "@/services/authService";
 import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
+interface StoredUser {
+    id: number;
+    name: string;
+    phone: string;
+    roles: string[];
+    tenantSlug: string;
+}
+
+const toStoredUser = (u: UserResponse): StoredUser => ({
+    id: u.id,
+    name: u.name,
+    phone: u.phone,
+    roles: u.roles,
+    tenantSlug: u.tenantSlug,
+});
+
+const fromStoredUser = (s: StoredUser): UserResponse => ({
+    id: s.id,
+    name: s.name,
+    email: "",
+    phone: s.phone,
+    uesrType: "",
+    accountLocked: false,
+    roles: s.roles,
+    permission: [],
+    tenantCode: "",
+    tenantSlug: s.tenantSlug,
+});
+
 interface AuthContextType {
     token: string | null;
     user: UserResponse | null;
     tenantSlug: string | null;
     isLoading: boolean;
-    login: (credentials: LoginPayload) => Promise<void>;
+    login: (credentials: LoginPayload) => Promise<UserResponse>;
     logout: () => Promise<void>;
 }
 
@@ -41,8 +70,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const storedToken = await SecureStore.getItemAsync('access_token')
                 const storedUser = await SecureStore.getItemAsync('user_data')
                 if (storedToken && storedUser) {
+                    const parsed = JSON.parse(storedUser);
                     setToken(storedToken);
-                    setUser(JSON.parse(storedUser))
+                    if (parsed.tenantSlug) {
+                        setUser(fromStoredUser(parsed));
+                    } else {
+                        setUser(parsed);
+                    }
                 }
             } catch (error) {
                 console.error("Failed to restore auth session:", error)
@@ -71,12 +105,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (res.success && res.data) {
             const { accessToken, userResponse } = res.data;
+            const stored = toStoredUser(userResponse);
 
             await SecureStore.setItemAsync('access_token', accessToken);
-            await SecureStore.setItemAsync('user_data', JSON.stringify(userResponse))
+            await SecureStore.setItemAsync('user_data', JSON.stringify(stored))
 
             setToken(accessToken)
-            setUser(userResponse)
+            setUser(fromStoredUser(stored))
+
+            return fromStoredUser(stored)
         } else {
             throw new Error(res.message || 'Login Failed')
         }

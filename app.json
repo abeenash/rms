@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "fos",
+    "name": "Zylo",
     "slug": "fos",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/Zap.png",
+    "icon": "./assets/zylo_icon.png",
     "scheme": "fos",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -15,7 +15,7 @@
       "package": "com.zylobrains.fos",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/Zap.png"
+        "foregroundImage": "./assets/adaptive_zylo.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false

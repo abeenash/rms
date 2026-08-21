@@ -1,6 +1,7 @@
 import { OrderItem } from "@/services/orderService";
+import { consolidateOrderItems } from "@/utils/consolidateOrderItems";
 import { Minus, Plus, X } from "lucide-react-native";
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Text from "../AppText";
 
@@ -27,12 +28,14 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
     onRemoveItem,
     colors,
 }) => {
+    const consolidated = useMemo(() => consolidateOrderItems(orderItems), [orderItems]);
+
     return (
         <View style={[styles.sectionCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
             <Text style={[styles.sectionSubtitleHeader, { color: colors.textMuted }]}>
-                ORDER ITEMS ({orderItems.length})
+                ORDER ITEMS ({consolidated.length})
             </Text>
-            {orderItems.map((item) => (
+            {consolidated.map((item) => (
                 <View key={item.id} style={[styles.orderItemRow, { borderBottomColor: colors.border }]}>
                     <View style={{ flex: 1 }}>
                         <Text style={{ color: colors.textMain, fontWeight: "600" }}>{item.itemName}</Text>
@@ -64,7 +67,7 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({
                             <X size={20} color={colors.accentRed} />
                         </TouchableOpacity>
                         <Text style={{ color: colors.textMain, fontWeight: "700", minWidth: 70, textAlign: "right" }}>
-                            Rs. {item.price * item.quantity}
+                            Rs. {item.totalPrice}
                         </Text>
                     </View>
                 </View>
