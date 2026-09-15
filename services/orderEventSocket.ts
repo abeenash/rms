@@ -1,6 +1,10 @@
-import { Client, IMessage } from "@stomp/stompjs";
+import { Client, IFrame, IMessage, ReconnectionTimeMode } from "@stomp/stompjs";
 
 const WS_URL = process.env.EXPO_PUBLIC_WS_URL;
+
+const MAX_RECONNECT_ATTEMPTS = 10;
+const BASE_RECONNECT_DELAY = 2000;
+const MAX_RECONNECT_DELAY = 60000;
 
 const ORDER_EVENT_TYPES = new Set([
     "NEW_ORDER",
@@ -74,12 +78,14 @@ export function startOrderEventSocket({
     }
 
     const seenMessageIds = new Set<string>();
-
     let intentionalShutdown = false;
 
-    const client = new Client({
+    let isFirstConnect = true;
+    let reconnectAttempts = 0;
 
-        webSocketFactory: () => new WebSocket(WS_URL!, ["v12.stomp", "v11.stomp", "v10.stomp"]),
+    const client = new Client({
+        webSocketFactory: () =>
+            new WebSocket(WS_URL!, ["v12.stomp", "v11.stomp", "v10.stomp"]),
 
         connectHeaders: {
             Authorization: `Bearer ${token}`,
@@ -87,12 +93,37 @@ export function startOrderEventSocket({
 
         heartbeatIncoming: 10000,
         heartbeatOutgoing: 10000,
-     
-        reconnectDelay: 0,
+
+        reconnectDelay: BASE_RECONNECT_DELAY,
+        reconnectTimeMode: ReconnectionTimeMode.EXPONENTIAL,
+        maxReconnectDelay: MAX_RECONNECT_DELAY,
+
+        beforeConnect: async (c) => {
+            if (isFirstConnect) {
+                isFirstConnect = false;
+                return;
+            }
+            reconnectAttempts++;
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                console.warn(
+                    `FOS STOMP: max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached, giving up`
+                );
+                onConnectionStatusChange?.("error");
+                await c.deactivate();
+                return;
+            }
+            console.log(
+                `FOS STOMP: reconnecting (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
+            );
+        },
+
         connectionTimeout: 10000,
+
         debug: (msg) => {
-            
-            const safe = msg.replace(/(Authorization:Bearer\s+)\S+/i, "$1[redacted]");
+            const safe = msg.replace(
+                /(Authorization:Bearer\s+)\S+/i,
+                "$1[redacted]"
+            );
             console.log("FOS STOMP debug:", safe);
         },
     });
@@ -137,28 +168,28 @@ export function startOrderEventSocket({
         );
     };
 
-    client.onWebSocketClose = (event) => {
-        console.warn("FOS WebSocket closed:", {
-            code: event.code,
-            reason: event.reason,
-            wasClean: event.wasClean,
-            initiatedByApp: intentionalShutdown,
-        });
-
-
+    // Use onDisconnect — NOT onWebSocketClose — to avoid interfering
+    // with stompjs internal reconnection logic.
+    client.onDisconnect = () => {
         if (!intentionalShutdown) {
+            console.warn("FOS STOMP: disconnected unexpectedly");
             onConnectionStatusChange?.("disconnected");
         }
     };
 
-    client.onWebSocketError = () => {
+    client.onWebSocketError = (event) => {
+        console.warn("FOS live-event WebSocket error:", event);
         onConnectionStatusChange?.("error");
-        console.warn("FOS live-event WebSocket connection failed.");
     };
 
-    client.onStompError = (frame) => {
-        console.warn("FOS STOMP error headers:", frame.headers);
+    client.onStompError = (frame: IFrame) => {
+        console.warn("FOS STOMP error:", frame.headers, frame.body);
         onConnectionStatusChange?.("error");
+
+        const receiptId = frame.headers["receipt-id"];
+        if (receiptId) {
+            console.warn("FOS STOMP: error in response to receipt:", receiptId);
+        }
     };
 
     client.activate();

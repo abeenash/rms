@@ -1,8 +1,8 @@
-import { createMaterialTopTabNavigator, MaterialTopTabNavigationOptions } from "@react-navigation/material-top-tabs"
+import { createMaterialTopTabNavigator, MaterialTopTabNavigationOptions } from "expo-router/js-top-tabs"
 import {
   ParamListBase,
   TabNavigationState
-} from "@react-navigation/native"
+} from "expo-router/react-navigation"
 import { useRouter, withLayoutContext } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import {
@@ -40,7 +40,7 @@ export default function TopTabsLayout() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
-      <StatusBar style={isDark ? "light" : "dark"} translucent backgroundColor="transparent" />
+      <StatusBar style={isDark ? "light" : "dark"} />
 
       <MaterialTopTabs
         screenOptions={{
