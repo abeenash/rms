@@ -29,13 +29,20 @@ export function useOrderEventAlerts() {
         tenantSlug: string;
     } | null>(null);
 
+    const mountedRef = useRef(true);
+
     useEffect(() => {
-        // ── WebSocket disabled via env flag ──────────────────────────────
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+
+    useEffect(() => {
         if (!WS_ENABLED) {
             return;
         }
 
-        // ── No credentials: close any open socket ────────────────────────
         if (!token || !tenantSlug) {
             activeCredsRef.current = null;
             return;
@@ -48,7 +55,6 @@ export function useOrderEventAlerts() {
             return;
         }
 
-        // ── New credentials: open a fresh socket ──────────────────────────
         activeCredsRef.current = { token, tenantSlug };
 
         const cleanup = startOrderEventSocket({
@@ -56,6 +62,7 @@ export function useOrderEventAlerts() {
             tenantSlug,
 
             onEvent: (event) => {
+                if (!mountedRef.current) return;
                 void presentLiveAlert({
                     event: notificationEventFor(event.type),
                     title: event.title,
@@ -65,6 +72,7 @@ export function useOrderEventAlerts() {
             },
 
             onConnectionStatusChange: (status) => {
+                if (!mountedRef.current) return;
                 console.log("FOS live alerts:", status);
             },
         });

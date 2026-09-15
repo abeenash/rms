@@ -42,7 +42,9 @@ function RootLayoutInner() {
   }, [fontsReady])
 
   useEffect(() => {
-    void configureLiveAlertsChannel();
+    configureLiveAlertsChannel().catch((error) => {
+      console.warn("Could not configure live alert channel:", error);
+    });
   }, [])
 
   if (!fontsReady) {

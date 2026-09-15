@@ -14,10 +14,10 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     const systemScheme = useColorScheme()
 
-    const [theme, setTheme] = useState<Theme>(systemScheme || "light")
+    const [theme, setTheme] = useState<Theme>(systemScheme === "dark" ? "dark" : "light")
 
     useEffect(() => {
-        if (systemScheme) {
+        if (systemScheme === "light" || systemScheme === "dark") {
             setTheme(systemScheme)
         }
     }, [systemScheme])
