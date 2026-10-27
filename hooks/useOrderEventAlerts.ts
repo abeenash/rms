@@ -73,7 +73,7 @@ export function useOrderEventAlerts() {
 
             onConnectionStatusChange: (status) => {
                 if (!mountedRef.current) return;
-                console.log("FOS live alerts:", status);
+                console.log("RMS live alerts:", status);
             },
         });
 

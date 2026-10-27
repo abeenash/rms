@@ -58,19 +58,6 @@ export default function TableOrderingScreen() {
         accentRed: '#EF4444',
     }
 
-    // const renderListFooter = () => {
-    //     if (!isLoadingMore) return null
-    //     return (
-    //         <View style={{ paddingVertical: 20, alignItems: "center" }}>
-    //             <ActivityIndicator size="small" color={colors.accentMain} />
-    //             <Text style={{ marginTop: 6, color: colors.textMuted, fontSize: 12 }}>
-    //                 Loading more dishes...
-    //             </Text>
-    //         </View>
-    //     )
-    // }
-
-
     return (
         <KeyboardAvoidingView
             style={{ flex: 1, backgroundColor: colors.bg }}

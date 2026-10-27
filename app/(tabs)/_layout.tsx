@@ -1,9 +1,5 @@
-import { createMaterialTopTabNavigator, MaterialTopTabNavigationOptions } from "expo-router/js-top-tabs"
-import {
-  ParamListBase,
-  TabNavigationState
-} from "expo-router/react-navigation"
-import { useRouter, withLayoutContext } from "expo-router"
+import { useRouter } from "expo-router"
+import { TopTabs as MaterialTopTabs } from "expo-router/js-top-tabs"
 import { StatusBar } from "expo-status-bar"
 import {
   ClipboardList,
@@ -15,15 +11,6 @@ import { TouchableOpacity, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { useTheme } from "../../context/ThemeContext"
-
-const { Navigator } = createMaterialTopTabNavigator()
-
-export const MaterialTopTabs = withLayoutContext<
-  MaterialTopTabNavigationOptions,
-  typeof Navigator,
-  TabNavigationState<ParamListBase>,
-  any
->(Navigator)
 
 export default function TopTabsLayout() {
   const insets = useSafeAreaInsets()

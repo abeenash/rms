@@ -8,6 +8,7 @@ import { useCustomAlert } from "../context/AlertContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { generateInvoiceHtml, generateKOTHtml, generatePOSHtml } from "../utils/billTemplates";
+import { applyQuantityChange, findGroupedOrderItems, planQuantityChange } from "../utils/consolidateOrderItems";
 import { usePrintHandler } from "./usePrintHandler";
 
 export function useOrderDetails() {
@@ -22,7 +23,6 @@ export function useOrderDetails() {
     const [networkError, setNetworkError] = useState(false);
     const [orderData, setOrderData] = useState<Order | null>(null);
     const [isInvoiceVisible, setIsInvoiceVisible] = useState(false);
-    const [isQRModalVisible, setIsQRModalVisible] = useState(false);
 
     const [orderStatus, setOrderStatus] = useState<string>("PENDING");
     const [paymentStatus, setPaymentStatus] = useState<string>("PENDING");
@@ -68,7 +68,7 @@ export function useOrderDetails() {
     // State flags
     const isCancelled = orderStatus === "CANCELLED";
     const isPaid = paymentStatus === "PAID";
-    const isOrderFinalized = orderStatus === "DELIVERED" || isCancelled || isPaid;
+    const isOrderFinalized = orderStatus === "DELIVERED" || orderStatus === "COMPLETED" || isCancelled || isPaid;
     const hasPendingItems = pendingItems.length > 0;
 
     // Load order details
@@ -235,60 +235,6 @@ export function useOrderDetails() {
 
     }, [isOrderFinalized, orderStatus, tenantSlug, confirmOrderCancellation, showAlert]);
 
-    // Payment status selection modal --> this will be removed later because "💵CASH" and "👝DIGITAL_WALLET" is enough. Also, to avoid confusion for the waiter.
-    const handlePaymentStatusSelect = useCallback(() => {
-        if (!tenantSlug || !orderId) return;
-        if (isOrderFinalized) {
-            showAlert(
-                "🔒 Payment Locked",
-                `Payment status is finalized as ${paymentStatus.toUpperCase()} and cannot be reverted.`
-            );
-            return;
-        }
-
-        showAlert(
-            "Update Payment Status",
-            "Select payment status:",
-            [
-                {
-                    text: "PAID (Delivers Order)",
-                    onPress: async () => {
-                        try {
-                            await updatePaymentStatusApi(tenantSlug, orderId, {
-                                paymentStatus: "PAID",
-                                paymentMethod: "CASH",
-                            });
-                            await updateOrderStatusApi(tenantSlug, orderId, "DELIVERED");
-                            setPaymentStatus("PAID");
-                            setOrderStatus("DELIVERED");
-                            showToast("Payment settled! Order delivered.");
-                        } catch (err: any) {
-                            const msg = err?.response?.data?.message || "Could not update payment status.";
-                            showAlert("Update Failed", msg);
-                        }
-                    }
-                },
-                {
-                    text: "PENDING",
-                    onPress: async () => {
-                        try {
-                            await updatePaymentStatusApi(tenantSlug, orderId, {
-                                paymentStatus: "PENDING",
-                                paymentMethod: "CASH",
-                            });
-                            setPaymentStatus("PENDING");
-                            showToast("Payment set to Pending");
-                        } catch (err: any) {
-                            const msg = err?.response?.data?.message || "Could not update payment status.";
-                            showAlert("Update Failed", msg);
-                        }
-                    }
-                },
-                { text: "Cancel", style: "cancel" }
-            ]
-        );
-    }, [isOrderFinalized, paymentStatus, tenantSlug, orderId, showToast, showAlert]);
-
     // Settle payment (Cash / Digital)
     const handleSettlePayment = useCallback(async (method: string) => {
         if (isCancelled || isPaid || !tenantSlug || !orderId) return;
@@ -325,32 +271,28 @@ export function useOrderDetails() {
         }
     }, [isCancelled, isPaid, hasPendingItems, tenantSlug, orderId, parsedManualDiscount, showToast, showAlert]);
 
-    // Update existing item quantity API integration
+    // Update existing item quantity API integration.
+    // itemId is the merged row's id; the change lands on one of the lines merged into it.
     const updateExistingQty = useCallback(async (itemId: string | number, delta: number) => {
         if (isOrderFinalized || !tenantSlug || !orderId) {
             if (isOrderFinalized) showAlert("Order Locked", "Cannot modify items on a finalized order.");
             return;
         }
 
-        const targetItem = orderItems.find((i) => String(i.id) === String(itemId));
-        if (!targetItem) return;
+        const change = planQuantityChange(findGroupedOrderItems(orderItems, itemId), delta);
+        if (!change) return;
 
-        const nextQty = Math.max(1, targetItem.quantity + delta);
-        if (nextQty === targetItem.quantity) return;
-
-        setOrderItems((prev) => prev.map((item) => {
-            if (String(item.id) === String(itemId)) {
-                return { ...item, quantity: nextQty, totalPrice: nextQty * item.price };
-            }
-            return item;
-        }));
+        const previousItems = orderItems;
+        setOrderItems(applyQuantityChange(orderItems, change).map((item) => ({ ...item, totalPrice: item.quantity * item.price })));
 
         try {
-            await updateOrderItemQtyApi(tenantSlug, orderId, itemId, nextQty);
+            if (change.kind === "delete") {
+                await deleteOrderItemApi(tenantSlug, orderId, change.lineId);
+            } else {
+                await updateOrderItemQtyApi(tenantSlug, orderId, change.lineId, change.quantity);
+            }
         } catch (error) {
-            setOrderItems((prev) => prev.map((item) => (
-                String(item.id) === String(itemId) ? targetItem : item
-            )));
+            setOrderItems(previousItems);
             if (isNetworkError(error)) {
                 showAlert("Network Error", NETWORK_OFFLINE_MESSAGE);
             } else {
@@ -366,12 +308,8 @@ export function useOrderDetails() {
             return;
         }
 
-        const targetItem = orderItems.find((i) => String(i.id) === String(itemId));
-        if (!targetItem) return;
-
-        const matchingItems = orderItems.filter(
-            (i) => i.itemName === targetItem.itemName && i.price === targetItem.price
-        );
+        const matchingItems = findGroupedOrderItems(orderItems, itemId);
+        if (matchingItems.length === 0) return;
 
         const label = matchingItems.length > 1
             ? `"${name}" (all ${matchingItems.length} entries)`
@@ -519,6 +457,7 @@ export function useOrderDetails() {
     const getStatusColors = useCallback((status: string) => {
         switch (status) {
             case "DELIVERED":
+            case "COMPLETED":
             case "PAID":
                 return { bg: colors.accentGreenBg, text: colors.accentGreen };
             case "CANCELLED":
@@ -578,10 +517,7 @@ export function useOrderDetails() {
         grandFinalTotal,
         isInvoiceVisible,
         setIsInvoiceVisible,
-        isQRModalVisible,
-        setIsQRModalVisible,
         handleOrderStatusSelect,
-        handlePaymentStatusSelect,
         handleSettlePayment,
         updateExistingQty,
         removeItem,

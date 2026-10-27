@@ -2,7 +2,7 @@ import { isRunningInExpoGo } from "expo";
 import * as Haptics from "expo-haptics";
 import { Platform, ToastAndroid } from "react-native";
 
-export const LIVE_ALERTS_CHANNEL_ID = "fos-live-alerts";
+export const LIVE_ALERTS_CHANNEL_ID = "live-alerts";
 
 type NotificationsModule = typeof import("expo-notifications");
 
@@ -25,15 +25,8 @@ type LiveAlertInput = {
 
 let Notifications: NotificationsModule | null | undefined; // null = loaded, undefined = not tried
 
-// Android remote (push) notification support was removed from Expo Go in SDK 53.
-// expo-notifications throws when its push APIs are used inside Expo Go on Android.
-// This app only uses local notifications, but to be safe we never load the module
-// in Expo Go on Android and fall back to an in-app toast instead.
-//
-// We detect Expo Go with `isRunningInExpoGo()` (the same helper expo-notifications
-// itself relies on) rather than Constants.executionEnvironment === StoreClient, because
-// StoreClient also matches development builds (expo-dev-client), where notifications
-// are fully supported and must keep working.
+// expo-notifications throws inside Expo Go on Android, so there we fall back to a toast.
+// isRunningInExpoGo() is used because it doesn't also match development builds.
 const EXPO_GO_ANDROID = Platform.OS === "android" && isRunningInExpoGo();
 
 function loadNotifications(): NotificationsModule | null {
@@ -92,7 +85,7 @@ export async function configureLiveAlertsChannel(): Promise<void> {
   }
 
   await mod.setNotificationChannelAsync(LIVE_ALERTS_CHANNEL_ID, {
-    name: "FOS Live Alerts",
+    name: "Live Alerts",
     description: "New orders, payments, and cancellations",
     importance: mod.AndroidImportance.HIGH,
     sound: null,

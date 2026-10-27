@@ -29,14 +29,13 @@ describe('OrderStatusCard', () => {
         paymentStatus="PENDING"
         isOrderFinalized={false}
         onOrderStatusPress={jest.fn()}
-        onPaymentStatusPress={jest.fn()}
         getStatusColors={getStatusColors}
         colors={defaultColors}
       />
     );
 
-    expect(getByText('CONFIRMED')).toBeTruthy();
-    expect(getByText('PENDING')).toBeTruthy();
+    expect(getByText('Ordered')).toBeTruthy();
+    expect(getByText('Unpaid')).toBeTruthy();
   });
 
   it('should show Order Status and Payment Status labels', async () => {
@@ -46,7 +45,6 @@ describe('OrderStatusCard', () => {
         paymentStatus="PENDING"
         isOrderFinalized={false}
         onOrderStatusPress={jest.fn()}
-        onPaymentStatusPress={jest.fn()}
         getStatusColors={getStatusColors}
         colors={defaultColors}
       />
@@ -64,13 +62,12 @@ describe('OrderStatusCard', () => {
         paymentStatus="PENDING"
         isOrderFinalized={false}
         onOrderStatusPress={onOrderStatusPress}
-        onPaymentStatusPress={jest.fn()}
         getStatusColors={getStatusColors}
         colors={defaultColors}
       />
     );
 
-    await fireEvent.press(getByText('CONFIRMED'));
+    await fireEvent.press(getByText('Ordered'));
     expect(onOrderStatusPress).toHaveBeenCalledTimes(1);  });
 
   it('should render payment status badge without onPress when not finalized', async () => {
@@ -80,13 +77,12 @@ describe('OrderStatusCard', () => {
         paymentStatus="PENDING"
         isOrderFinalized={false}
         onOrderStatusPress={jest.fn()}
-        onPaymentStatusPress={jest.fn()}
         getStatusColors={getStatusColors}
         colors={defaultColors}
       />
     );
 
-    const paymentBadge = getByText('PENDING');
+    const paymentBadge = getByText('Unpaid');
     expect(paymentBadge).toBeTruthy();
     expect(paymentBadge.parent?.props?.disabled).toBeFalsy();
   });
@@ -98,13 +94,12 @@ describe('OrderStatusCard', () => {
         paymentStatus="PAID"
         isOrderFinalized={false}
         onOrderStatusPress={jest.fn()}
-        onPaymentStatusPress={jest.fn()}
         getStatusColors={getStatusColors}
         colors={defaultColors}
       />
     );
 
-    expect(getByText('CANCELLED')).toBeTruthy();
-    expect(getByText('PAID')).toBeTruthy();
+    expect(getByText('Cancelled')).toBeTruthy();
+    expect(getByText('Paid')).toBeTruthy();
   });
 });

@@ -1,3 +1,4 @@
+// Not used yet: dynamic QR payments are parked until the backend's payment endpoints are ready.
 import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,

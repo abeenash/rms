@@ -6,7 +6,7 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
     login: jest.fn().mockResolvedValue({
       id: 1, name: 'Test', email: 'test@test.com', phone: '123',
-      uesrType: 'WAITER', accountLocked: false, roles: ['WAITER'],
+      userType: 'WAITER', accountLocked: false, roles: ['WAITER'],
       permission: [], tenantCode: 'T1', tenantSlug: 't1',
     }),
     token: null,

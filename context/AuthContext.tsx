@@ -24,7 +24,7 @@ const fromStoredUser = (s: StoredUser): UserResponse => ({
     name: s.name,
     email: "",
     phone: s.phone,
-    uesrType: "",
+    userType: "",
     accountLocked: false,
     roles: s.roles,
     permission: [],

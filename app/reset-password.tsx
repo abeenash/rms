@@ -6,6 +6,7 @@ import {
     StatusBar,
     StyleSheet,
     TextInput,
+    TextInputInstance,
     TouchableOpacity,
     View
 } from "react-native";
@@ -45,7 +46,7 @@ export default function ResetPasswordScreen() {
     const [isResending, setIsResending] = useState(false);
     const [cooldown, setCooldown] = useState(0);
 
-    const otpRefs = useRef<(TextInput | null)[]>([]);
+    const otpRefs = useRef<(TextInputInstance | null)[]>([]);
 
     const colors = {
         bg: isDark ? "#0F172A" : "#F8FAFC",

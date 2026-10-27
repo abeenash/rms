@@ -54,10 +54,7 @@ export default function OrderDetailsScreen() {
         grandFinalTotal,
         isInvoiceVisible,
         setIsInvoiceVisible,
-        isQRModalVisible,
-        setIsQRModalVisible,
         handleOrderStatusSelect,
-        handlePaymentStatusSelect,
         handleSettlePayment,
         updateExistingQty,
         removeItem,
@@ -140,7 +137,6 @@ export default function OrderDetailsScreen() {
                     paymentStatus={paymentStatus}
                     isOrderFinalized={isOrderFinalized}
                     onOrderStatusPress={handleOrderStatusSelect}
-                    onPaymentStatusPress={handlePaymentStatusSelect}
                     getStatusColors={getStatusColors}
                     colors={colors}
                 />
@@ -222,15 +218,6 @@ export default function OrderDetailsScreen() {
                 onPrintInvoice={handlePrintInvoice}
                 onPrintKOT={handlePrintKOT}
             />
-            {/* <PaymentQRModal
-                visible={isQRModalVisible}
-                onClose={() => setIsQRModalVisible(false)}
-                orderData={orderData}
-                orderId={orderId || ""}
-                grandFinalTotal={grandFinalTotal}
-                tenantSlug={tenantSlug || ""}
-                onConfirmPaid={() => handleSettlePayment("Digital Wallet")}
-            /> */}
         </KeyboardAvoidingView>
     );
 }

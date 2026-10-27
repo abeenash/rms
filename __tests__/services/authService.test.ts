@@ -37,7 +37,7 @@ describe('authService', () => {
               name: 'Test User',
               email: 'test@example.com',
               phone: '1234567890',
-              uesrType: 'WAITER',
+              userType: 'WAITER',
               accountLocked: false,
               roles: ['WAITER'],
               permission: ['order:create'],
