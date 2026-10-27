@@ -176,7 +176,6 @@ export const OrderSummaryCard: React.FC<OrderSummaryFooterProps> = ({
                             </View>
                             <View style={{ flexDirection: "row", gap: 8 }}>
                                 <TouchableOpacity
-                                    // disabled={isOrderFinalized}
                                     onPress={onCancelSelection} style={styles.removeBtn} activeOpacity={0.7}>
                                     <X size={18} color={colors.accentRed} />
                                 </TouchableOpacity>

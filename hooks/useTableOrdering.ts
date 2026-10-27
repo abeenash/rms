@@ -1,10 +1,18 @@
-import { addItemsToOrderApi, AddOrderItemsPayload, createOrderApi, CreateOrderPayload, createTableOrderApi, CreateTableOrderPayload, deleteOrderItemApi, fetchActiveOrderByTableIdApi, fetchOrderByIdApi, generateIdempotencyKey, updateOrderItemQtyApi } from "@/services/orderService";
+import { ActiveTableOrderData, addItemsToOrderApi, AddOrderItemsPayload, createOrderApi, CreateOrderPayload, createTableOrderApi, CreateTableOrderPayload, deleteOrderItemApi, fetchActiveOrderByTableIdApi, generateIdempotencyKey, isOpenOrderStatus, updateOrderItemQtyApi } from "@/services/orderService";
+import { fetchDiningTableByIdApi } from "@/services/tableService";
+import { applyQuantityChange, ExistingItem, findGroupedExistingItems, planQuantityChange } from "@/utils/consolidateOrderItems";
 import { isNetworkError, NETWORK_OFFLINE_MESSAGE } from "@/utils/networkError";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useCustomAlert } from "../context/AlertContext";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { AlertButton, useCustomAlert } from "../context/AlertContext";
 import { useAuth } from "../context/AuthContext";
 import { useCatalogItems, useMenuCategories, useMenuSearch } from "./useMenuCatalog";
+
+const isSubscriptionError = (error: any): boolean => {
+    const status = error?.response?.status;
+    const msg = (error?.response?.data?.message || "").toLowerCase();
+    return status === 400 && (msg.includes("subscription") || msg.includes("expired") || msg.includes("renew"));
+};
 
 export interface UIItem {
     id: string;
@@ -24,21 +32,38 @@ export interface CartState {
     [key: string]: CartItem;
 }
 
-export interface ExistingItem {
-    id: string
-    name: string
-    price: number
-    quantity: number
+export type { ExistingItem }
+
+//why a table cannot take a new order right now
+export interface TableBlock {
+    reason: "no-open-order" | "lookup-failed"
+    message: string
+    lastOrderId: number | null
 }
 
+interface TableOrderLookup {
+    tableStatus: string
+    openOrder: ActiveTableOrderData | null
+    block: TableBlock | null
+}
+
+const toExistingItems =(order: ActiveTableOrderData): ExistingItem[] =>
+    (order.items || []).map((item) => ({
+        id: String(item.id),
+        itemId: item.itemId,
+        name: item.itemName,
+        price: item.price,
+        quantity: item.quantity,
+        kotSent: item.kotSent,
+    }))
+
 export function useTableOrdering() {
-    const { tableId, tableNumber, capacity, isDirectOrder, status, currentOrderId } = useLocalSearchParams<{
+    const { tableId, tableNumber, capacity, isDirectOrder, status } = useLocalSearchParams<{
         tableId: string
         tableNumber?: string
         capacity?: string
         isDirectOrder: string
         status?: string
-        currentOrderId?: string
     }>()
 
     const router = useRouter()
@@ -47,7 +72,6 @@ export function useTableOrdering() {
 
     const displayTableNumber = tableNumber || tableId
     const isDirect = tableId === 'direct' || isDirectOrder === 'true'
-    const isOccupied = status?.toLowerCase() === 'occupied'
 
     //ui and control states
     const [search, setSearch] = useState("")
@@ -55,48 +79,120 @@ export function useTableOrdering() {
 
     //loaders
     const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false)
-    const [isLoadingExistingOrder, setIsLoadingExistingOrder] = useState<boolean>(false)
+    const [isLoadingExistingOrder, setIsLoadingExistingOrder] = useState<boolean>(!isDirect)
 
     //for orders and cart
     const [cart, setCart] = useState<CartState>({})
     const [existingOrderItems, setExistingOrderItems] = useState<ExistingItem[]>([])
     const [isExpanded, setIsExpanded] = useState(false)
-    const [activeOrderId, setActiveOrderId] = useState<string | number | null>(currentOrderId || null) //isolating the db 
-    const [activeOrderNumber, setActiveOrderNumber] = useState<string>(currentOrderId || "")
+
+    //live table state from the server; the dashboard param is only a fallback
+    const [liveTableStatus, setLiveTableStatus] = useState<string>((status || "").toUpperCase())
+    const [activeOrder, setActiveOrder] = useState<ActiveTableOrderData | null>(null)
+    const [tableBlock, setTableBlock] = useState<TableBlock | null>(null)
 
     //modification tracking for back action feedback
     const [modifiedItemNames, setModifiedItemNames] = useState<Set<string>>(new Set())
 
-    const targetOrderId = currentOrderId || activeOrderId
-    const displayOrderNumber = activeOrderNumber || currentOrderId
+    //retrying the same cart reuses its idempotency key
+    const submitAttemptRef = useRef<{ signature: string, key: string } | null>(null)
+    const lookupSeqRef = useRef(0)
 
-    //to fetch the running order for occupied tables
-    useEffect(() => {
-        const loadExistingOrder = async () => {
-            if (isOccupied && currentOrderId && tenantSlug) {
-                try {
-                    setIsLoadingExistingOrder(true)
-                    const orderData = await fetchOrderByIdApi(tenantSlug, currentOrderId)
-                    if (orderData && Array.isArray(orderData.items)) {
-                        const formattedExisting: ExistingItem[] = orderData.items.map((item) => ({
-                            id: String(item.id),
-                            name: item.itemName,
-                            price: item.price,
-                            quantity: item.quantity
-                        }))
-                        setExistingOrderItems(formattedExisting)
-                    }
-                } catch (err) {
-                    console.error("Failed to fetch running order items:", err)
-                } finally {
-                    setIsLoadingExistingOrder(false)
+    const targetOrderId = activeOrder?.id ?? null
+    const displayOrderNumber = activeOrder ? (activeOrder.orderNumber || String(activeOrder.id)) : ""
+    const isOccupied = !isDirect && (Boolean(activeOrder) || liveTableStatus === "OCCUPIED")
+
+    //finds the table's open order, or the reason it can't take a new one
+    const lookupTableOrder = useCallback(async (): Promise<TableOrderLookup> => {
+        if (isDirect || !tableId || !tenantSlug) {
+            return { tableStatus: "", openOrder: null, block: null }
+        }
+
+        const [tableResult, orderResult] = await Promise.allSettled([
+            fetchDiningTableByIdApi(tenantSlug, tableId),
+            fetchActiveOrderByTableIdApi(tenantSlug, tableId),
+        ])
+
+        const tableStatus = tableResult.status === "fulfilled" && tableResult.value?.status
+            ? tableResult.value.status.toUpperCase()
+            : (status || "").toUpperCase()
+        const isTableOccupied = tableStatus === "OCCUPIED"
+
+        let openOrder: ActiveTableOrderData | null = null
+        let block: TableBlock | null = null
+
+        if (orderResult.status === "fulfilled") {
+            const order = orderResult.value?.data ?? null
+
+            if (order && isOpenOrderStatus(order.status)) {
+                openOrder = order
+            } else if (isTableOccupied) {
+                const orderLabel = order ? `Order #${order.orderNumber || order.id} (${order.status}, payment ${order.paymentStatus || "PENDING"})` : ""
+                const isLastOrderClosed = !order || order.status?.toUpperCase() === "CANCELLED" || order.paymentStatus?.toUpperCase() === "PAID"
+                block = {
+                    reason: "no-open-order",
+                    message: !order
+                        ? `Table ${displayTableNumber} is marked occupied but has no order. Ask an admin to free the table.`
+                        : isLastOrderClosed
+                            ? `Table ${displayTableNumber} is still marked occupied, but its last order ${orderLabel} is already closed. Ask an admin to free the table.`
+                            : `Table ${displayTableNumber} is still occupied by ${orderLabel}. Settle that order before starting a new one.`,
+                    lastOrderId: order?.id ?? null,
                 }
-            } else {
-                setExistingOrderItems([])
+            }
+        } else if (isTableOccupied || isNetworkError(orderResult.reason)) {
+            //don't guess that the table is free
+            block = {
+                reason: "lookup-failed",
+                message: isNetworkError(orderResult.reason)
+                    ? NETWORK_OFFLINE_MESSAGE
+                    : `Could not load the running order for Table ${displayTableNumber}. Tap the order button to try again.`,
+                lastOrderId: null,
             }
         }
-        loadExistingOrder()
-    }, [isOccupied, currentOrderId, tenantSlug])
+
+        return { tableStatus, openOrder, block }
+    }, [isDirect, tableId, tenantSlug, status, displayTableNumber])
+
+    const applyLookup = useCallback((lookup: TableOrderLookup) => {
+        setLiveTableStatus(lookup.tableStatus)
+        setActiveOrder(lookup.openOrder)
+        setExistingOrderItems(lookup.openOrder ? toExistingItems(lookup.openOrder) : [])
+        setTableBlock(lookup.block)
+        setIsLoadingExistingOrder(false)
+    }, [])
+
+    const showTableBlockAlert = useCallback((block: TableBlock) => {
+        const buttons: AlertButton[] = [
+            { text: "OK", style: "cancel" },
+        ]
+        if (block.lastOrderId !== null) {
+            const orderId = block.lastOrderId
+            buttons.push({ text: "Open Order", onPress: () => router.push(`/orders/${orderId}`) })
+        }
+        showAlert(block.reason === "lookup-failed" ? "Table Unavailable" : "Table Occupied", block.message, buttons)
+    }, [router, showAlert])
+
+    //showAlert changes on every alert, so it stays out of the lookup effect's deps
+    const announceTableBlock = useEffectEvent((block: TableBlock) => showTableBlockAlert(block))
+
+    //look the table up once and warn right away if it's blocked
+    useEffect(() => {
+        if (isDirect) return
+        const seq = ++lookupSeqRef.current
+        lookupTableOrder().then((lookup) => {
+            if (seq !== lookupSeqRef.current) return
+            applyLookup(lookup)
+            if (lookup.block) announceTableBlock(lookup.block)
+        })
+    }, [isDirect, lookupTableOrder, applyLookup])
+
+    const reloadTableOrder = useCallback(async (): Promise<TableOrderLookup> => {
+        const seq = ++lookupSeqRef.current
+        setIsLoadingExistingOrder(true)
+        const lookup = await lookupTableOrder()
+        if (seq === lookupSeqRef.current) applyLookup(lookup)
+        return lookup
+    }, [lookupTableOrder, applyLookup])
 
     const { catalogItems, isLoading: isCatalogLoading } = useCatalogItems(tenantSlug)
     const categoriesQuery = useMenuCategories(tenantSlug)
@@ -120,54 +216,6 @@ export function useTableOrdering() {
         }
         return sourceItems.filter((item) => selectedCategory === "All" || item.category === selectedCategory)
     }, [sourceItems, selectedCategory, isSearchActive])
-
-    //active order search by tableId
-    useEffect(() => {
-        const loadExistingOrder = async () => {
-            if (isDirect || !tableId || !tenantSlug) {
-                setExistingOrderItems([])
-                setActiveOrderNumber("")
-                setActiveOrderId(null)
-                return
-            }
-            try {
-                setIsLoadingExistingOrder(true)
-                const response = await fetchActiveOrderByTableIdApi(tenantSlug, tableId)
-                if (response?.success && response?.data) {
-                    const orderData = response.data
-
-                    // Only handle confirmed active orders
-                    if (orderData.status?.toUpperCase() === "CONFIRMED" && Array.isArray(orderData.items)) {
-                        setActiveOrderId(orderData.id)
-                        setActiveOrderNumber(orderData.orderNumber || String(orderData.id))
-
-                        const formattedExisting: ExistingItem[] = orderData.items.map((item) => ({
-                            id: String(item.id),
-                            name: item.itemName,
-                            price: item.price,
-                            quantity: item.quantity
-                        }))
-                        setExistingOrderItems(formattedExisting)
-                    } else {
-                        setActiveOrderId(null)
-                        setActiveOrderNumber("")
-                        setExistingOrderItems([])
-                    }
-                } else {
-                    setActiveOrderId(null)
-                    setActiveOrderNumber("")
-                    setExistingOrderItems([])
-                }
-            } catch (err) {
-                setActiveOrderId(null)
-                setActiveOrderNumber("")
-                setExistingOrderItems([])
-            } finally {
-                setIsLoadingExistingOrder(false)
-            }
-        }
-        loadExistingOrder()
-    }, [tenantSlug, tableId, isDirect])
 
     //the cart actions [addToCart, removeFromCart, updateExistingQty, removeExistingItem]
     const addToCart = useCallback((itemToAdd: UIItem) => {
@@ -201,49 +249,38 @@ export function useTableOrdering() {
     const updateExistingQty = useCallback(async (itemId: string | number, delta: number) => {
         if (!tenantSlug || !targetOrderId) return
 
-        let targetItemName = ""
-        let targetNewQty = 0
-        let originalItem: ExistingItem | undefined
-        const stringId = String(itemId)
+        //itemId is the merged row's id; the change goes to one of its lines
+        const groupedLines = findGroupedExistingItems(existingOrderItems, itemId)
+        const change = planQuantityChange(groupedLines, delta)
+        if (!change) return
 
-        setExistingOrderItems((prev) => prev.map((item) => {
-            if (item.id === stringId) {
-                originalItem = item
-                targetItemName = item.name
-                targetNewQty = Math.max(1, item.quantity + delta)
-                return { ...item, quantity: targetNewQty }
-            }
-            return item
-        }))
-
-        if (!originalItem || targetNewQty === originalItem.quantity) return
+        const previousItems = existingOrderItems
+        setExistingOrderItems(applyQuantityChange(existingOrderItems, change))
 
         try {
-            await updateOrderItemQtyApi(tenantSlug, targetOrderId, stringId, targetNewQty)
-            setModifiedItemNames((prev) => new Set(prev).add(targetItemName))
+            if (change.kind === "delete") {
+                await deleteOrderItemApi(tenantSlug, targetOrderId, change.lineId)
+            } else {
+                await updateOrderItemQtyApi(tenantSlug, targetOrderId, change.lineId, change.quantity)
+            }
+            setModifiedItemNames((prev) => new Set(prev).add(groupedLines[0].name))
         } catch (error: any) {
+            //rollback ui state on failure
+            setExistingOrderItems(previousItems)
             if (isNetworkError(error)) {
                 showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
             } else {
                 console.error("Failed to update item quantity:", error)
-                //rollback ui state on failure
-                setExistingOrderItems((prev) => prev.map((item) => (
-                    item.id === stringId && originalItem ? originalItem : item
-                )))
                 showAlert("Update Failed", "Could not update item quantity on the server")
             }
         }
-    }, [tenantSlug, targetOrderId, showAlert])
+    }, [tenantSlug, targetOrderId, existingOrderItems, showAlert])
 
     const removeExistingItem = useCallback(async (itemId: string | number, name: string) => {
         if (!tenantSlug || !targetOrderId) return
 
-        const targetItem = existingOrderItems.find((i) => i.id === String(itemId))
-        if (!targetItem) return
-
-        const matchingItems = existingOrderItems.filter(
-            (i) => i.name === targetItem.name && i.price === targetItem.price
-        )
+        const matchingItems = findGroupedExistingItems(existingOrderItems, itemId)
+        if (matchingItems.length === 0) return
 
         const label = matchingItems.length > 1
             ? `"${name}" (all ${matchingItems.length} entries)`
@@ -259,11 +296,8 @@ export function useTableOrdering() {
                     style: "destructive",
                     onPress: async () => {
                         const matchingIds = new Set(matchingItems.map((i) => i.id))
-                        let originalList: ExistingItem[] = []
-                        setExistingOrderItems((prev) => {
-                            originalList = prev
-                            return prev.filter(item => !matchingIds.has(item.id))
-                        })
+                        const originalList = existingOrderItems
+                        setExistingOrderItems((prev) => prev.filter(item => !matchingIds.has(item.id)))
 
                         try {
                             for (const item of matchingItems) {
@@ -300,7 +334,6 @@ export function useTableOrdering() {
     }, [modifiedItemNames, router, showAlert])
 
     //computations [filtering, total, grandtotal, activeordercount]
-    // const filteredMenuItems = menuItems.filter((item) => selectedCategory === "All" || item.category === selectedCategory)
     const cartItemsArray = Object.values(cart)
     const newItemsSubtotal = cartItemsArray.reduce((sum, entry) => sum + (entry.item.price * entry.quantity), 0)
     const totalCartCount = cartItemsArray.reduce((prevQty, entry) => prevQty + entry.quantity, 0)
@@ -320,13 +353,27 @@ export function useTableOrdering() {
     const handleConfirmOrder = async () => {
         if (!tenantSlug || cartItemsArray.length === 0 || isSubmittingOrder) return
 
-        setIsSubmittingOrder(true)
+        if (!isDirect && isLoadingExistingOrder) return
 
-        const newIdempotencyKey = generateIdempotencyKey();
-
-        const targetOrderId = currentOrderId || activeOrderId;
-
-        const isExistingOrder = (isOccupied || Boolean(targetOrderId) || safeExistingOrderItems.length > 0) && !isDirect
+        if (!isDirect && tableBlock) {
+            if (tableBlock.reason !== "lookup-failed") {
+                showTableBlockAlert(tableBlock)
+                return
+            }
+            //the first lookup failed: retry it before placing anything
+            const lookup = await reloadTableOrder()
+            if (lookup.block) {
+                showTableBlockAlert(lookup.block)
+                return
+            }
+            if (lookup.openOrder) {
+                showAlert(
+                    "Running Order Found",
+                    `Table ${displayTableNumber} has Order #${lookup.openOrder.orderNumber || lookup.openOrder.id} (${lookup.openOrder.status}). Review it and tap "Update Order" to add your items.`
+                )
+                return
+            }
+        }
 
         const formattedItems = cartItemsArray.map((cartEntry) => {
             const parseId = Number(cartEntry.item.id)
@@ -336,27 +383,36 @@ export function useTableOrdering() {
             }
         })
 
+        const target = isDirect ? "direct" : targetOrderId ? `order:${targetOrderId}` : `table:${tableId}`
+        const signature = `${target}|${JSON.stringify(formattedItems)}`
+        if (submitAttemptRef.current?.signature !== signature) {
+            submitAttemptRef.current = { signature, key: generateIdempotencyKey() }
+        }
+        const idempotencyKey = submitAttemptRef.current.key
+
+        setIsSubmittingOrder(true)
+
         try {
             let responseOrder;
 
-            if (isExistingOrder && targetOrderId) {
+            if (!isDirect && targetOrderId) {
                 const addItemsPayload: AddOrderItemsPayload = {
-                    idempotencyKey: newIdempotencyKey,
+                    idempotencyKey,
                     items: formattedItems,
                 }
 
                 await addItemsToOrderApi(tenantSlug, targetOrderId, addItemsPayload)
 
-                // setIdempotencyKey(null)
+                submitAttemptRef.current = null
                 setCart({})
 
                 showAlert(
                     "Order Updated",
-                    `New items added to Order #${displayOrderNumber || currentOrderId}!`,
+                    `New items added to Order #${displayOrderNumber}!`,
                     [
                         {
                             text: "OK",
-                            onPress: () => router.back()
+                            onPress: () => router.replace("/(tabs)/orders")
                         }
                     ]
                 )
@@ -366,7 +422,7 @@ export function useTableOrdering() {
             if (isDirect) {
                 // Direct Counter Order
                 const orderPayload: CreateOrderPayload = {
-                    idempotencyKey: newIdempotencyKey,
+                    idempotencyKey,
                     items: formattedItems,
                 }
                 responseOrder = await createOrderApi(tenantSlug, orderPayload)
@@ -380,13 +436,14 @@ export function useTableOrdering() {
                     customerAddress: "Dine-in",
                     items: formattedItems,
                     orderedAt: new Date().toISOString(),
-                    idempotencyKey: newIdempotencyKey,
+                    idempotencyKey,
                 }
 
                 const apiRes = await createTableOrderApi(tenantSlug, tableOrderPayload)
                 responseOrder = apiRes.data
             }
 
+            submitAttemptRef.current = null
             setCart({})
 
             showAlert(
@@ -395,7 +452,7 @@ export function useTableOrdering() {
                 [
                     {
                         text: "OK",
-                        onPress: () => router.back()
+                        onPress: () => isDirect ? router.back() : router.replace("/(tabs)/orders")
                     }
                 ]
             )
@@ -403,17 +460,35 @@ export function useTableOrdering() {
             if (isNetworkError(error)) {
                 showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
             } else {
-                console.error("Failed to process order:", error)
+                console.error("Failed to process order:", {
+                    status: error?.response?.status,
+                    message: error?.response?.data?.message,
+                    url: error?.config?.url,
+                })
                 const statusCode = error?.response?.status;
                 const serverMsg =
                     error?.response?.data?.message ||
                     (error?.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
                     "Invalid order parameters provided (400 Bad Request)."
 
-                if (statusCode === 409) {
+                if (statusCode === 409 && !isDirect) {
+                    //the table got an order meanwhile: switch to it and keep the cart
+                    const { openOrder } = await reloadTableOrder()
+                    if (openOrder) {
+                        showAlert(
+                            "Table Already Has an Order",
+                            `Table ${displayTableNumber} already has Order #${openOrder.orderNumber || openOrder.id} (${openOrder.status}). Your items are still in the cart — review them and tap "Update Order" to add them to that order.`
+                        )
+                    } else {
+                        showAlert(
+                            "Table State Conflict (409)",
+                            `The server rejected the request: "${serverMsg}". Go back to the tables view and re-select this table.`
+                        )
+                    }
+                } else if (isSubscriptionError(error)) {
                     showAlert(
-                        "Table State Conflict (409)",
-                        `The server rejected the request: "${serverMsg}". If this table is already occupied, please go back to tables view and re-select.`
+                        "Subscription Expired",
+                        "Your subscription has expired. Please contact your administrator to renew before placing orders."
                     )
                 } else {
                     showAlert(
@@ -430,6 +505,9 @@ export function useTableOrdering() {
     return {
         //navigation and identifiers
         displayTableNumber, displayOrderNumber, capacity, isDirect, isOccupied, handleBackNavigation,
+
+        //live table state
+        activeOrderStatus: activeOrder?.status ?? null, tableBlock, reloadTableOrder,
 
         //data and filters
         search, setSearch, selectedCategory, setSelectedCategory, categories, filteredMenuItems,

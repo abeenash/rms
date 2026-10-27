@@ -13,7 +13,7 @@ import { OfflineBanner } from "../components/OfflineBanner"
 import { SplashScreenOverlay } from "../components/SplashScreenOverlay"
 import { AlertProvider } from "../context/AlertContext"
 import { AuthProvider, useAuth } from "../context/AuthContext"
-import { ThemeProvider } from "../context/ThemeContext"
+import { APP_BACKGROUND, ThemeProvider, useTheme } from "../context/ThemeContext"
 import { useOrderEventAlerts } from "../hooks/useOrderEventAlerts"
 import { TanStackProvider } from "../providers/TanStackProvider"
 import { configureLiveAlertsChannel } from "../services/localNotificationService"
@@ -29,6 +29,7 @@ function RootLayoutInner() {
   });
 
   const { isLoading: authLoading } = useAuth();
+  const { theme } = useTheme();
   useOrderEventAlerts();
   const [overlayDismissed, setOverlayDismissed] = useState(false);
 
@@ -63,6 +64,7 @@ function RootLayoutInner() {
       <Stack
         screenOptions={{
           headerShown: false,
+          contentStyle: { backgroundColor: APP_BACKGROUND[theme] },
           headerStyle: {
             backgroundColor: '#ababab'
           },

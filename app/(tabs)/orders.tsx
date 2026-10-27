@@ -1,6 +1,7 @@
-import { Clock, ShoppingBag } from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import { ChevronDown, Clock, ShoppingBag } from "lucide-react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -21,11 +22,42 @@ import Text from "../../components/AppText";
 import { useCustomAlert } from "../../context/AlertContext";
 import { useTheme } from "../../context/ThemeContext";
 
-import { fetchOrdersApi, Order, OrderStatus } from "@/services/orderService";
+import { fetchOrdersApi, Order } from "@/services/orderService";
+import { getKitchenStage, getWaiterOrderState, isTableOrder, KITCHEN_STAGE_LABEL, WAITER_STATE_LABEL, WaiterOrderState } from "@/utils/orderState";
 import { timeAgo } from "@/utils/timeAgo";
 import { useAuth } from "../../context/AuthContext";
 
-const WAITER_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"];
+type StateFilter = "all" | WaiterOrderState;
+type TypeFilter = "all" | "direct" | "table";
+
+const STATE_FILTERS: StateFilter[] = ["all", "unpaid", "paid", "cancelled"];
+
+const TYPE_FILTER_LABEL: Record<TypeFilter, string> = {
+  all: "All orders",
+  table: "Table orders",
+  direct: "Direct orders",
+};
+
+// waiters only work with the last 24 hours; older orders stay reachable through their table
+const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+const emptyMessage = (stateFilter: StateFilter, typeFilter: TypeFilter): string => {
+  const state = stateFilter === "all" ? "" : `${WAITER_STATE_LABEL[stateFilter].toLowerCase()} `;
+  const type = typeFilter === "all" ? "" : `${typeFilter} `;
+  return `No ${state}${type}orders in the last 24 hours.`;
+};
+
+function PulsingDot({ color }: { color: string }) {
+  const opacity = useSharedValue(1);
+
+  useEffect(() => {
+    opacity.set(withRepeat(withTiming(0.2, { duration: 650 }), -1, true));
+  }, [opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+
+  return <Animated.View style={[styles.stageDot, { backgroundColor: color }, animatedStyle]} />;
+}
 
 export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
@@ -39,7 +71,11 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [activeFilter, setActiveFilter] = useState<"all" | OrderStatus>("all");
+  const [activeFilter, setActiveFilter] = useState<StateFilter>("all");
+  const [orderTypeFilter, setOrderTypeFilter] = useState<TypeFilter>("all");
+  const [isTypeMenuOpen, setIsTypeMenuOpen] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState<number>(() => Date.now());
+  const [loadError, setLoadError] = useState<boolean>(false);
 
   const loadOrders = useCallback(async (showLoader = true) => {
     if (!tenantSlug) {
@@ -54,7 +90,10 @@ export default function OrdersScreen() {
 
       const fetchedOrders = await fetchOrdersApi(tenantSlug);
       setOrders(fetchedOrders)
+      setLastFetchTime(Date.now())
+      setLoadError(false)
     } catch (error) {
+      setLoadError(true)
       if (isNetworkError(error)) {
         showAlert("Network Error", NETWORK_OFFLINE_MESSAGE)
       }
@@ -76,6 +115,7 @@ export default function OrdersScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
+    setOrderTypeFilter("all");
     loadOrders(false);
   };
 
@@ -91,29 +131,36 @@ export default function OrdersScreen() {
     border: isDark ? "#334155" : "#E2E8F0",
     skeletonBlock: isDark ? "#334155" : "#E2E8F0",
 
-    pending: isDark ? "#EAB308" : "#D97706",
-    confirmed: isDark ? "#EAB308" : "#D97706",
-    preparing: isDark ? "#3B82F6" : "#2563EB",
-    out_for_delivery: isDark ? "#8B5CF6" : "#7C3AED",
-    delivered: isDark ? "#22C55E" : "#16A34A",
-    completed: isDark ? "#22C55E" : "#16A34A",
+    unpaid: isDark ? "#EAB308" : "#D97706",
+    paid: isDark ? "#22C55E" : "#16A34A",
     cancelled: isDark ? "#EF4444" : "#DC2626",
+    inKitchen: isDark ? "#60A5FA" : "#2563EB",
+    ready: isDark ? "#A78BFA" : "#7C3AED",
 
-    pendingBg: isDark ? "#2E2509" : "#FEF3C7",
-    confirmedBg: isDark ? "#2E2509" : "#FEF3C7",
-    preparingBg: isDark ? "#0C1A3D" : "#EFF6FF",
-    out_for_deliveryBg: isDark ? "#1A0F2E" : "#F5F3FF",
-    deliveredBg: isDark ? "#0A251C" : "#F0FDF4",
-    completedBg: isDark ? "#0A251C" : "#F0FDF4",
+    unpaidBg: isDark ? "#2E2509" : "#FEF3C7",
+    paidBg: isDark ? "#0A251C" : "#F0FDF4",
     cancelledBg: isDark ? "#2A1414" : "#FEF2F2",
   };
 
-  const filteredOrders = orders.filter(order => {
-    if (activeFilter === "all") return true
-    return order.status === activeFilter
-  });
+  const { filteredOrders, filterCounts } = useMemo(() => {
+    const cutoffTime = lastFetchTime - RECENT_WINDOW_MS
+    const ofType = orders
+      .filter((order) => new Date(order.orderedAt).getTime() >= cutoffTime)
+      .filter((order) => orderTypeFilter === "all" || (orderTypeFilter === "table") === isTableOrder(order))
+      .sort((a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime())
+
+    const matches = (filter: StateFilter) => (order: Order) =>
+      filter === "all" || getWaiterOrderState(order) === filter
+
+    const counts = Object.fromEntries(
+      STATE_FILTERS.map((filter) => [filter, ofType.filter(matches(filter)).length])
+    ) as Record<StateFilter, number>
+
+    return { filteredOrders: ofType.filter(matches(activeFilter)), filterCounts: counts }
+  }, [orders, activeFilter, orderTypeFilter, lastFetchTime]);
 
   return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
     <ScrollView
       style={[styles.container, { backgroundColor: colors.bg }]}
       contentContainerStyle={{ paddingBottom: 40 }}
@@ -124,12 +171,24 @@ export default function OrdersScreen() {
     >
 
       <View style={styles.contentPadding}>
-        <Text style={[styles.sectionTitle, { color: colors.textMain, fontWeight: "700" }]}>
-          Your Recent Orders
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textMain, fontWeight: "700" }]}>
+            Your Recent Orders
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setIsTypeMenuOpen(true)}
+            style={[styles.typeDropdown, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
+          >
+            <Text style={[styles.typeDropdownText, { color: orderTypeFilter === "all" ? colors.textMuted : colors.textMain, fontWeight: "600" }]}>
+              {TYPE_FILTER_LABEL[orderTypeFilter]}
+            </Text>
+            <ChevronDown size={14} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ gap: 8 }}>
-          {(["all", ...WAITER_STATUSES] as const).map((filter) => {
+          {STATE_FILTERS.map((filter) => {
             const isSelected = activeFilter === filter;
             return (
               <TouchableOpacity
@@ -152,7 +211,7 @@ export default function OrdersScreen() {
                     }
                   ]}
                 >
-                  {filter === "all" ? "ALL" : filter.replace(/_/g, " ")}
+                  {filter === "all" ? "All" : WAITER_STATE_LABEL[filter]} ({filterCounts[filter]})
                 </Text>
               </TouchableOpacity>
             );
@@ -176,13 +235,23 @@ export default function OrdersScreen() {
             ))
           ) : filteredOrders.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={{ color: colors.textMuted, fontWeight: "500" }}>No orders found in this filter you have selected.</Text>
+              <ShoppingBag size={36} color={colors.textMuted} />
+              <Text style={[styles.emptyTitle, { color: colors.textMain, fontWeight: "700" }]}>
+                {loadError && orders.length === 0 ? "Couldn't load orders" : emptyMessage(activeFilter, orderTypeFilter)}
+              </Text>
+              <Text style={[styles.emptyHint, { color: colors.textMuted }]}>
+                {loadError && orders.length === 0
+                  ? "Check the internet connection, then pull down to try again."
+                  : "New orders will appear here. Pull down to refresh."}
+              </Text>
             </View>
           ) : (
             filteredOrders.map((order) => {
-              const statusKey = (order.status || "PENDING").toLowerCase()
-              const badgeBg = colors[`${statusKey}Bg` as keyof typeof colors] || colors.pendingBg;
-              const badgeText = colors[statusKey as keyof typeof colors] || colors.pending;
+              const waiterState = getWaiterOrderState(order)
+              const kitchenStage = getKitchenStage(order)
+              const badgeBg = colors[`${waiterState}Bg`]
+              const badgeText = colors[waiterState]
+              const stageColor = kitchenStage === "ready" ? colors.ready : colors.inKitchen
 
               const display = timeAgo(order.orderedAt)
 
@@ -209,7 +278,7 @@ export default function OrdersScreen() {
                       </Text>
                       <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
                         <Text style={[styles.statusBadgeText, { color: badgeText, fontWeight: "700" }]}>
-                          {order.status}
+                          {WAITER_STATE_LABEL[waiterState]}
                         </Text>
                       </View>
                     </View>
@@ -241,6 +310,18 @@ export default function OrdersScreen() {
                         <Text style={[styles.timeText, { color: colors.textMuted, fontWeight: "500" }]}>
                           {display}
                         </Text>
+                        {kitchenStage ? (
+                          <View style={styles.stageTag}>
+                            {kitchenStage === "ready" ? (
+                              <PulsingDot color={stageColor} />
+                            ) : (
+                              <View style={[styles.stageDot, { backgroundColor: stageColor }]} />
+                            )}
+                            <Text style={[styles.stageText, { color: stageColor, fontWeight: "700" }]}>
+                              {KITCHEN_STAGE_LABEL[kitchenStage]}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                       <Text style={[styles.amountText, { color: colors.textMain, fontWeight: "700" }]}>
                         Rs. {order.totalAmount}
@@ -254,6 +335,44 @@ export default function OrdersScreen() {
         </View>
       </View>
     </ScrollView>
+
+    <Modal
+      visible={isTypeMenuOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setIsTypeMenuOpen(false)}
+    >
+      <TouchableOpacity
+        style={styles.modalBackdrop}
+        activeOpacity={1}
+        onPress={() => setIsTypeMenuOpen(false)}
+      >
+        <View style={[styles.typeMenu, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          {(["all", "table", "direct"] as const).map((typeKey) => (
+            <TouchableOpacity
+              key={typeKey}
+              activeOpacity={0.6}
+              onPress={() => {
+                setOrderTypeFilter(typeKey)
+                setIsTypeMenuOpen(false)
+              }}
+              style={[
+                styles.typeMenuItem,
+                orderTypeFilter === typeKey && { backgroundColor: "#6366F1" },
+              ]}
+            >
+              <Text style={[
+                styles.typeMenuItemText,
+                { color: orderTypeFilter === typeKey ? "#FFFFFF" : colors.textMain },
+              ]}>
+                {TYPE_FILTER_LABEL[typeKey]}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+    </View>
   );
 }
 
@@ -267,7 +386,25 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     letterSpacing: -0.5,
+    flex: 1,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 14,
+  },
+  typeDropdown: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  typeDropdownText: {
+    fontSize: 12,
   },
   filterRow: {
     flexDirection: "row",
@@ -349,13 +486,38 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 12,
   },
+  stageTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginLeft: 10,
+  },
+  stageDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  stageText: {
+    fontSize: 12,
+  },
   amountText: {
     fontSize: 16,
   },
   emptyContainer: {
-    paddingVertical: 40,
+    paddingVertical: 48,
+    paddingHorizontal: 24,
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    textAlign: "center",
+    marginTop: 4,
+  },
+  emptyHint: {
+    fontSize: 13,
+    textAlign: "center",
   },
   skBlock: {
     borderRadius: 4,
@@ -365,5 +527,34 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     borderRadius: 6,
     borderWidth: 1,
-  }
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 100,
+    paddingRight: 16,
+  },
+  typeMenu: {
+    width: 160,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  typeMenuItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  typeMenuItemText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
 });

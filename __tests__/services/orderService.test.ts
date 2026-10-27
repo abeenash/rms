@@ -66,7 +66,9 @@ describe('orderService', () => {
 
       const result = await fetchOrdersApi('tenant-1');
 
-      expect(mockApi.get).toHaveBeenCalledWith('public/tenant-1/order');
+      expect(mockApi.get).toHaveBeenCalledWith('public/tenant-1/order', {
+        params: { page: 0, size: 100 },
+      });
       expect(result).toEqual(mockOrders);
     });
 

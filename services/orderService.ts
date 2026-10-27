@@ -12,25 +12,27 @@ export const ORDER_STATUSES = [
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+// a table with an order in one of these is OCCUPIED and rejects a new table-order (409)
+export const OPEN_ORDER_STATUSES: readonly string[] = ["PENDING", "CONFIRMED", "PREPARING", "OUT_FOR_DELIVERY"];
+
+export const isOpenOrderStatus = (status?: string | null): boolean =>
+    !!status && OPEN_ORDER_STATUSES.includes(status.toUpperCase());
+
+// extra rounds arrive as new lines (newlyAdded), so one dish can span several lines
 export interface OrderItem {
     id: number;
+    itemId?: number | null;
     itemName: string;
     quantity: number;
     price: number;
     totalPrice: number;
     discountPercent?: number | null;
     discountAmount?: number | null;
+    newlyAdded?: boolean | null;
+    kotSent?: boolean | null;
 }
 
-export interface ActiveOrderItem {
-    id: number;
-    itemName: string;
-    quantity: number;
-    price: number;
-    totalPrice: number;
-    discountPercent?: number | null;
-    discountAmount?: number | null;
-}
+export type ActiveOrderItem = OrderItem;
 
 export interface Order {
     id: number;
@@ -50,6 +52,8 @@ export interface Order {
     paymentMethod?: string;
     paymentStatus?: string;
     orderedAt: string;
+    orderType?: string | null;
+    tableId?: number | null;
     tableNumber?: number | null;
     items: OrderItem[];
 }
@@ -83,6 +87,8 @@ export interface ActiveTableOrderData {
     paymentMethod?: string;
     paymentStatus?: string;
     orderedAt?: string;
+    orderType?: string | null;
+    tableId?: number | null;
     tableNumber?: number;
     items: ActiveOrderItem[];
 }
@@ -165,8 +171,13 @@ export const generateIdempotencyKey = (): string => {
     return `ord_ik_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
+// the backend's default page size is only 10
+export const ORDERS_PAGE_SIZE = 100;
+
 export const fetchOrdersApi = async (tenantSlug: string): Promise<Order[]> => {
-    const response = await api.get<OrderApiResponse>(`public/${tenantSlug}/order`);
+    const response = await api.get<OrderApiResponse>(`public/${tenantSlug}/order`, {
+        params: { page: 0, size: ORDERS_PAGE_SIZE },
+    });
     return response.data?.data?.content || []
 }
 

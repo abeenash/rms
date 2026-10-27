@@ -1,6 +1,7 @@
 import { ChevronDown, Lock } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { getOrderStatusLabel, getPaymentStatusLabel } from "@/utils/orderState";
 import Text from "../AppText";
 
 interface OrderStatusCardProps {
@@ -8,7 +9,6 @@ interface OrderStatusCardProps {
     paymentStatus: string;
     isOrderFinalized: boolean;
     onOrderStatusPress: () => void;
-    onPaymentStatusPress: () => void;
     getStatusColors: (status: string) => { bg: string; text: string };
     colors: {
         cardBg: string;
@@ -23,7 +23,6 @@ export const OrderStatusCard: React.FC<OrderStatusCardProps> = ({
     paymentStatus,
     isOrderFinalized,
     onOrderStatusPress,
-    onPaymentStatusPress,
     getStatusColors,
     colors,
 }) => {
@@ -41,7 +40,7 @@ export const OrderStatusCard: React.FC<OrderStatusCardProps> = ({
                     style={[styles.toggleBadge, { backgroundColor: statusColors.bg }]}
                 >
                     <Text style={{ color: statusColors.text, fontWeight: "700", fontSize: 13 }}>
-                        {orderStatus}
+                        {getOrderStatusLabel(orderStatus)}
                     </Text>
                     {isOrderFinalized ? (
                         <Lock size={12} color={statusColors.text} style={{ marginLeft: 6 }} />
@@ -59,7 +58,7 @@ export const OrderStatusCard: React.FC<OrderStatusCardProps> = ({
                     style={[styles.toggleBadge, { backgroundColor: paymentColors.bg }]}
                 >
                     <Text style={{ color: paymentColors.text, fontWeight: "700", fontSize: 13 }}>
-                        {paymentStatus}
+                        {getPaymentStatusLabel(paymentStatus)}
                     </Text>
                     {isOrderFinalized && (
                         <Lock size={12} color={paymentColors.text} style={{ marginLeft: 6 }} />

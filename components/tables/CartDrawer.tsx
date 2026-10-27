@@ -164,7 +164,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = React.memo(({
                         )}
                     </ScrollView>
 
-                    {/* --- REPLACE THE OLD subtotalRowBlock WITH THIS --- */}
                     <View style={styles.totalsContainerBlock}>
                         {isOccupied && consolidatedExisting.length > 0 ? (
                             <>

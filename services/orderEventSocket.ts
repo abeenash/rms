@@ -106,14 +106,14 @@ export function startOrderEventSocket({
             reconnectAttempts++;
             if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
                 console.warn(
-                    `FOS STOMP: max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached, giving up`
+                    `RMS STOMP: max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached, giving up`
                 );
                 onConnectionStatusChange?.("error");
                 await c.deactivate();
                 return;
             }
             console.log(
-                `FOS STOMP: reconnecting (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
+                `RMS STOMP: reconnecting (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
             );
         },
 
@@ -124,14 +124,14 @@ export function startOrderEventSocket({
                 /(Authorization:Bearer\s+)\S+/i,
                 "$1[redacted]"
             );
-            console.log("FOS STOMP debug:", safe);
+            console.log("RMS STOMP debug:", safe);
         },
     });
 
     client.onConnect = () => {
         const destination = `/topic/tenant/${tenantSlug}`;
 
-        console.log("FOS STOMP subscribing:", destination);
+        console.log("RMS STOMP subscribing:", destination);
         onConnectionStatusChange?.("connected");
 
         client.subscribe(
@@ -172,23 +172,23 @@ export function startOrderEventSocket({
     // with stompjs internal reconnection logic.
     client.onDisconnect = () => {
         if (!intentionalShutdown) {
-            console.warn("FOS STOMP: disconnected unexpectedly");
+            console.warn("RMS STOMP: disconnected unexpectedly");
             onConnectionStatusChange?.("disconnected");
         }
     };
 
     client.onWebSocketError = (event) => {
-        console.warn("FOS live-event WebSocket error:", event);
+        console.warn("RMS live-event WebSocket error:", event);
         onConnectionStatusChange?.("error");
     };
 
     client.onStompError = (frame: IFrame) => {
-        console.warn("FOS STOMP error:", frame.headers, frame.body);
+        console.warn("RMS STOMP error:", frame.headers, frame.body);
         onConnectionStatusChange?.("error");
 
         const receiptId = frame.headers["receipt-id"];
         if (receiptId) {
-            console.warn("FOS STOMP: error in response to receipt:", receiptId);
+            console.warn("RMS STOMP: error in response to receipt:", receiptId);
         }
     };
 
@@ -196,7 +196,7 @@ export function startOrderEventSocket({
 
     return () => {
         intentionalShutdown = true;
-        console.log("FOS live alerts: effect cleanup requested");
+        console.log("RMS live alerts: effect cleanup requested");
         void client.deactivate();
     };
 }

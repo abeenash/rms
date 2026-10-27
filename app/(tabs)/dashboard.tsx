@@ -1,5 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router"
-import { BadgeCheck, LogOut, Moon, MoreVertical, Search, Store, Sun, User, Users } from "lucide-react-native"
+import { BadgeCheck, LogOut, Moon, MoreVertical, Search, ShieldCheck, Store, Sun, User, Users } from "lucide-react-native"
+import { openPrivacyPolicy } from "../../constants/legal"
 import React, { useCallback, useEffect, useState } from "react"
 import {
   Dimensions,
@@ -44,6 +45,7 @@ export default function DashboardScreen() {
   const { logout, user, tenantSlug } = useAuth()
   const { showAlert } = useCustomAlert()
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"available" | "occupied" | null>(null)
   const [tables, setTables] = useState<DiningTable[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [refreshing, setRefreshing] = useState<boolean>(false)
@@ -134,6 +136,7 @@ export default function DashboardScreen() {
 
   const onRefresh = () => {
     setRefreshing(true)
+    setStatusFilter(null)
     loadTables(false)
   }
 
@@ -145,7 +148,6 @@ export default function DashboardScreen() {
         tableNumber: String(table.tableNumber),
         capacity: String(table.capacity),
         status: table.status === "occupied" ? "Occupied" : "Available",
-        currentOrderId: table.currentOrderId ? String(table.currentOrderId) : ""
       }
     })
   }
@@ -176,9 +178,11 @@ export default function DashboardScreen() {
   const availableTables = tables.filter((t) => t.status === "available").length
   const occupiedTables = totalTables - availableTables
 
-  const filteredTables = tables.filter((table) =>
-    String(table.tableNumber).toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredTables = tables.filter((table) => {
+    const matchesSearch = String(table.tableNumber).toLowerCase().includes(search.toLowerCase())
+    const matchesStatus = !statusFilter || table.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
 
   const colors = {
     bg: isDark ? "#0F172A" : "#F8FAFC",
@@ -245,15 +249,37 @@ export default function DashboardScreen() {
             </View>
           ) : (
             <View style={styles.metricsContainer}>
-              <View style={[styles.metricCard, { backgroundColor: colors.cardAvailableBg, borderColor: colors.cardAvailableBorder }]}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setStatusFilter(statusFilter === "available" ? null : "available")}
+                style={[
+                  styles.metricCard,
+                  {
+                    backgroundColor: colors.cardAvailableBg,
+                    borderColor: colors.cardAvailableBorder,
+                    opacity: statusFilter && statusFilter !== "available" ? 0.45 : 1,
+                  }
+                ]}
+              >
                 <Text style={[styles.metricNumber, { color: colors.availableAccent }]}>{availableTables}</Text>
                 <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Available</Text>
-              </View>
+              </TouchableOpacity>
 
-              <View style={[styles.metricCard, { backgroundColor: colors.cardOccupiedBg, borderColor: colors.cardOccupiedBorder }]}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setStatusFilter(statusFilter === "occupied" ? null : "occupied")}
+                style={[
+                  styles.metricCard,
+                  {
+                    backgroundColor: colors.cardOccupiedBg,
+                    borderColor: colors.cardOccupiedBorder,
+                    opacity: statusFilter && statusFilter !== "occupied" ? 0.45 : 1,
+                  }
+                ]}
+              >
                 <Text style={[styles.metricNumber, { color: colors.occupiedAccent }]}>{occupiedTables}</Text>
                 <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Occupied</Text>
-              </View>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -377,6 +403,17 @@ export default function DashboardScreen() {
                 )}
                 <Text style={[styles.menuItemLabelText, { color: colors.textMain }]}>
                   {isDark ? "Light Mode" : "Dark Mode"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.6}
+                onPress={() => closeMenu(() => openPrivacyPolicy())}
+                style={styles.menuRowItem}
+              >
+                <ShieldCheck size={18} color={colors.textMuted} />
+                <Text style={[styles.menuItemLabelText, { color: colors.textMain }]}>
+                  Privacy Policy
                 </Text>
               </TouchableOpacity>
 

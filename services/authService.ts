@@ -10,7 +10,7 @@ export interface UserResponse {
     name: string;
     email: string;
     phone: string;
-    uesrType: string;
+    userType: string;
     accountLocked: boolean;
     roles: string[];
     permission: string[];

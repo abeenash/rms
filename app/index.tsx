@@ -11,6 +11,7 @@ import {
 } from "react-native";
 
 import Text from "../components/AppText";
+import { openPrivacyPolicy } from "../constants/legal";
 
 import { useRouter } from "expo-router";
 import { Eye, EyeOff, LogIn, Moon, Sun } from "lucide-react-native";
@@ -282,6 +283,10 @@ const LoginScreen = () => {
             </View>
           </TouchableOpacity>
         </Animated.View>
+
+        <TouchableOpacity onPress={openPrivacyPolicy} activeOpacity={0.6} style={styles.privacyLink}>
+          <Text style={[styles.privacyLinkText, { color: colors.textSecondary }]}>Privacy Policy</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -401,6 +406,15 @@ const styles = StyleSheet.create({
   },
   buttonIcon: {
     marginLeft: 1,
+  },
+  privacyLink: {
+    alignSelf: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  privacyLinkText: {
+    fontSize: 13,
+    textDecorationLine: "underline",
   },
 });
 
